@@ -6,30 +6,22 @@ export default function Register() {
   const { register } = useAuth();
   const nav = useNavigate();
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  const phoneBased = phone.trim().length > 0;
 
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
     setError('');
     try {
-      const d = await register({ name, phone, email, password });
+      const d = await register({ name, username, email, password });
       if (d.needsVerification) {
-        if (phone.trim()) {
-          const q = new URLSearchParams({ phone });
-          if (d.devCode) q.set('dev', d.devCode);
-          nav(`/verify-phone?${q.toString()}`);
-        } else {
-          const q = new URLSearchParams({ email });
-          if (d.devCode) q.set('dev', d.devCode);
-          nav(`/verify-email?${q.toString()}`);
-        }
+        const q = new URLSearchParams({ email });
+        if (d.devCode) q.set('dev', d.devCode);
+        nav(`/verify-email?${q.toString()}`);
       } else {
         nav('/');
       }
@@ -45,8 +37,8 @@ export default function Register() {
       <form className="auth-card" onSubmit={submit}>
         <h1>Create your account</h1>
         <p className="muted">
-          Use your phone number and friends can find you by it — exactly like a
-          unique handle.
+          Pick a unique username and friends can find you by it — exactly like a
+          handle.
         </p>
         <label>
           Display name
@@ -59,37 +51,37 @@ export default function Register() {
           />
         </label>
         <label>
-          Phone number <span className="opt">(recommended)</span>
+          Username <span className="opt">(optional)</span>
           <input
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+91 98765 43210"
-            autoComplete="tel"
+            value={username}
+            onChange={(e) => setUsername(e.target.value.replace(/\s/g, ''))}
+            minLength={3}
+            maxLength={20}
+            placeholder="@alex_07 — leave blank to auto-generate"
+            autoComplete="username"
           />
         </label>
-        <div className="divider">
-          <span>optional extras</span>
-        </div>
         <label>
-          Email <span className="opt">(optional)</span>
+          Email
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            required
             autoComplete="email"
-            placeholder={phoneBased ? 'you@example.com' : 'Required without a phone'}
+            placeholder="you@example.com"
           />
         </label>
         <label>
-          Password <span className="opt">(optional)</span>
+          Password
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            required
             minLength={6}
             autoComplete="new-password"
-            placeholder={phoneBased ? 'Set one if you like' : 'Required without a phone'}
+            placeholder="At least 6 characters"
           />
         </label>
         {error && <div className="form-error">{error}</div>}

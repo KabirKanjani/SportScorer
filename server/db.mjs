@@ -24,8 +24,7 @@ db.exec(`
     email          TEXT NOT NULL UNIQUE,
     password_hash  TEXT NOT NULL DEFAULT '',
     email_verified INTEGER NOT NULL DEFAULT 0,
-    phone          TEXT,
-    phone_verified INTEGER NOT NULL DEFAULT 0,
+    username       TEXT,
     created_at     TEXT NOT NULL
   );
 
@@ -88,16 +87,6 @@ db.exec(`
     PRIMARY KEY (email, purpose)
   );
 
-  CREATE TABLE IF NOT EXISTS phone_code (
-    phone      TEXT NOT NULL,
-    purpose    TEXT NOT NULL CHECK (purpose IN ('register','login','verify_own')),
-    code_hash  TEXT NOT NULL,
-    expires_at INTEGER NOT NULL,
-    attempts   INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY (phone, purpose)
-  );
-
   CREATE TABLE IF NOT EXISTS oauth_account (
     user_id       INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
     provider      TEXT NOT NULL,
@@ -125,17 +114,12 @@ db.exec(`
   if (!cols.some((c) => c.name === 'password_hash')) {
     db.exec('ALTER TABLE user ADD COLUMN password_hash TEXT NOT NULL DEFAULT \'\'');
   }
-  if (!cols.some((c) => c.name === 'phone')) {
-    db.exec('ALTER TABLE user ADD COLUMN phone TEXT');
-  }
-  if (!cols.some((c) => c.name === 'phone_verified')) {
-    db.exec(
-      'ALTER TABLE user ADD COLUMN phone_verified INTEGER NOT NULL DEFAULT 0'
-    );
+  if (!cols.some((c) => c.name === 'username')) {
+    db.exec('ALTER TABLE user ADD COLUMN username TEXT');
   }
   // A unique index matters more than a column constraint here: real platforms
   // migrate pre-existing tables, and SQLite forbids ADD COLUMN ... UNIQUE.
-  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_user_phone ON user(phone)');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_user_username ON user(username)');
 }
 // Migrations for credibility features.
 {
@@ -155,27 +139,56 @@ db.exec(`
 
 // ---------------- Users ------------------------------------------------------
 
+function slugify(v) {
+  return String(v || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_\s-]/g, '')
+    .replace(/[\s-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 20);
+}
+
+// Returns a unique lowercase username based on the given name/email.
+export function uniqueUsername(base) {
+  let stem = slugify(base) || 'player';
+  if (stem.length < 3) stem = `${stem}player`.slice(0, 6);
+  let want = stem;
+  let i = 0;
+  for (;;) {
+    const row = db
+      .prepare(`SELECT 1 FROM user WHERE lower(username) = lower(?)`)
+      .get(want);
+    if (!row) return want;
+    i += 1;
+    want = `${stem}${i}`.slice(0, 20);
+  }
+}
+
+// Prefix/strip a leading "@" if present.
+export function cleanUsername(v) {
+  return String(v || '').replace(/^@+/, '').trim().toLowerCase();
+}
+
 export function createUser({
   name,
   email,
   passwordHash,
   emailVerified = 0,
-  phone,
-  phoneVerified = 0,
+  username,
 }) {
   const now = new Date().toISOString();
+  const uname = cleanUsername(username) || uniqueUsername(name || email);
   const info = db
     .prepare(
-      `INSERT INTO user (name, email, password_hash, email_verified, phone, phone_verified, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO user (name, email, password_hash, email_verified, username, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
     )
     .run(
       name,
       email,
       passwordHash || '',
       emailVerified ? 1 : 0,
-      phone || null,
-      phoneVerified ? 1 : 0,
+      uname,
       now
     );
   return getUserById(info.lastInsertRowid);
@@ -183,18 +196,6 @@ export function createUser({
 
 export function markEmailVerified(userId) {
   db.prepare(`UPDATE user SET email_verified = 1 WHERE id = ?`).run(userId);
-}
-
-export function markPhoneVerified(userId) {
-  db.prepare(`UPDATE user SET phone_verified = 1 WHERE id = ?`).run(userId);
-}
-
-// Attach a (unique, pre-nullified) phone to a user and mark it verified.
-export function setUserPhone(userId, phone) {
-  db.prepare(`UPDATE user SET phone = ?, phone_verified = 1 WHERE id = ?`).run(
-    phone,
-    userId
-  );
 }
 
 // Provider login: reuse an existing account by email (link) or create a new one.
@@ -231,8 +232,10 @@ export function getUserByEmail(email) {
     .get(email);
 }
 
-export function getUserByPhone(phone) {
-  return db.prepare(`SELECT * FROM user WHERE phone = ?`).get(phone);
+export function getUserByUsername(username) {
+  return db
+    .prepare(`SELECT * FROM user WHERE lower(username) = lower(?)`)
+    .get(cleanUsername(username));
 }
 
 export function getUserById(id) {
@@ -240,15 +243,19 @@ export function getUserById(id) {
 }
 
 export function searchUsers(q, limit = 8) {
-  if (!q) return db.prepare(`SELECT id, name, email FROM user ORDER BY name LIMIT ?`).all(limit);
+  if (!q) {
+    return db
+      .prepare(`SELECT id, name, username, email FROM user ORDER BY name LIMIT ?`)
+      .all(limit);
+  }
   const like = `%${q}%`;
   return db
     .prepare(
-      `SELECT id, name, email FROM user
-       WHERE name LIKE ? OR email LIKE ? OR phone LIKE ?
+      `SELECT id, name, username, email FROM user
+       WHERE name LIKE ? OR username LIKE ?
        ORDER BY name LIMIT ?`
     )
-    .all(like, like, like, limit);
+    .all(like, like, limit);
 }
 
 export function serializeUser(u) {
@@ -256,10 +263,9 @@ export function serializeUser(u) {
     ? {
         id: u.id,
         name: u.name,
+        username: u.username || null,
         email: u.email,
         emailVerified: !!u.email_verified,
-        phone: u.phone || null,
-        phoneVerified: !!u.phone_verified,
         createdAt: u.created_at,
       }
     : null;
@@ -333,47 +339,6 @@ export function countRecentCodes(email, minutes = 15) {
       `SELECT COUNT(*) AS n FROM email_code WHERE email = ? AND created_at > ?`
     )
     .get(email, since).n;
-}
-
-// ---------------- Phone codes (OTP) -------------------------------------------------
-
-export function savePhoneCode({ phone, purpose, codeHash, expiresAt }) {
-  db.prepare(`DELETE FROM phone_code WHERE phone = ? AND purpose = ?`).run(
-    phone,
-    purpose
-  );
-  db.prepare(
-    `INSERT INTO phone_code (phone, purpose, code_hash, expires_at, created_at)
-     VALUES (?, ?, ?, ?, ?)`
-  ).run(phone, purpose, codeHash, String(expiresAt), new Date().toISOString());
-}
-
-export function getPhoneCode(phone, purpose) {
-  return db
-    .prepare(`SELECT * FROM phone_code WHERE phone = ? AND purpose = ?`)
-    .get(phone, purpose);
-}
-
-export function deletePhoneCode(phone, purpose) {
-  db.prepare(`DELETE FROM phone_code WHERE phone = ? AND purpose = ?`).run(
-    phone,
-    purpose
-  );
-}
-
-export function bumpPhoneAttempts(phone, purpose) {
-  db.prepare(
-    `UPDATE phone_code SET attempts = attempts + 1 WHERE phone = ? AND purpose = ?`
-  ).run(phone, purpose);
-}
-
-export function countRecentPhoneCodes(phone, minutes = 15) {
-  const since = new Date(Date.now() - minutes * 60 * 1000).toISOString();
-  return db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM phone_code WHERE phone = ? AND created_at > ?`
-    )
-    .get(phone, since).n;
 }
 
 // ---------------- Matches ----------------------------------------------------

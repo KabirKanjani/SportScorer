@@ -279,6 +279,8 @@ button { font-family: inherit; }
 .cred-chip.ok { color: var(--p1); background: rgba(52,211,153,.12); border: 1px solid #1f6f52; }
 .cred-chip.warn { color: var(--gold); background: rgba(251,191,36,.1); border: 1px solid #7a5a1f; }
 .cred-chip.neutral { color: var(--muted); background: var(--bg-soft); border: 1px solid var(--line); }
+.username-tag { color: var(--p2); font-weight: 600; margin-left: 8px; white-space: nowrap; }
+.pick-chip .username-tag { margin-left: 6px; font-weight: 600; }
 .player-head .cred-chip { margin-left: 10px; }
 .card-flags { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; }
 .card-flags .cred-chip { margin-left: 0; }

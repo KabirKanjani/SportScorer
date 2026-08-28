@@ -19,6 +19,7 @@ import {
   followingIds,
   searchUsers,
   getUserById,
+  getUserByUsername,
   serializeUser,
   isPlayerOf,
   isCreatorOf,
@@ -40,13 +41,8 @@ import {
   issueOtp,
   verifyOtp,
   isOtpPurpose,
-  issuePhoneCode,
-  verifyPhoneCode,
-  isPhonePurpose,
-  normalizePhone,
-  isPhoneOk,
 } from './otp.mjs';
-import { findOrCreateOAuthUser, getUserByPhone, markPhoneVerified, setUserPhone } from './db.mjs';
+import { findOrCreateOAuthUser } from './db.mjs';
 import {
   googleConfigured,
   newOAuthState,
@@ -244,61 +240,6 @@ export function createApi({ broadcast }) {
     return res.json({ ok: true, user: startSession(req, res, out.user) });
   });
 
-  // Phone OTP: send a code to a number, then verify it.
-  api.post('/phone/send', async (req, res) => {
-    const { phone, purpose } = req.body || {};
-    if (!isPhonePurpose(purpose)) {
-      return res.status(400).json({ error: 'Invalid purpose' });
-    }
-    const p = normalizePhone(phone);
-    if (!isPhoneOk(p)) {
-      return res.status(400).json({ error: 'Enter a valid phone number (e.g. +91 98765 43210 or 98765 43210).' });
-    }
-    if (purpose === 'login' && !getUserByPhone(p)) {
-      return res.status(400).json({ error: 'No account is registered with that number yet. Sign up first.' });
-    }
-    if (purpose === 'verify_own') {
-      if (!req.user) return res.status(401).json({ error: 'Not logged in' });
-      const taken = getUserByPhone(p);
-      if (taken && taken.id !== req.user.id) {
-        return res.status(409).json({ error: 'That number is already linked to another account' });
-      }
-    }
-    try {
-      const out = await issuePhoneCode(p, purpose);
-      if (out.error) return res.status(out.code || 400).json({ error: out.error });
-      return res.json({ ok: true, phone: p, ...(out.devCode ? { devCode: out.devCode } : {}) });
-    } catch {
-      return res.status(502).json({ error: 'Could not send the SMS right now.' });
-    }
-  });
-
-  api.post('/phone/verify', (req, res) => {
-    const { phone, purpose, code } = req.body || {};
-    const out = verifyPhoneCode(phone, purpose, code);
-    if (out.error) return res.status(out.code || 400).json({ error: out.error });
-
-    if (purpose === 'login') {
-      return res.json({ ok: true, user: startSession(req, res, out.user) });
-    }
-
-    if (purpose === 'verify_own') {
-      if (!req.user) return res.status(401).json({ error: 'Not logged in' });
-      const taken = getUserByPhone(out.phone);
-      if (taken && taken.id !== req.user.id) {
-        return res.status(409).json({ error: 'That number is already linked to another account' });
-      }
-      setUserPhone(req.user.id, out.phone);
-      return res.json({ ok: true, user: serializeUser(getUserById(req.user.id)) });
-    }
-
-    // register: mark the just-created account's phone verified
-    const u = getUserByPhone(out.phone);
-    if (!u) return res.status(400).json({ error: 'No account found for that number.' });
-    markPhoneVerified(u.id);
-    return res.json({ ok: true, user: serializeUser(getUserById(u.id)) });
-  });
-
   // Google Sign in
   api.get('/auth/google/config', (_req, res) => {
     res.json({ available: googleConfigured() });
@@ -400,10 +341,16 @@ export function createApi({ broadcast }) {
       return res.status(400).json({ error: 'Each side must have 1 or 2 players' });
     }
 
-    // Resolve names / ensure users exist
+    // Resolve names / ensure users exist. Entries may be a numeric user id or a
+    // username handle (with or without a leading @).
+    const resolvePlayer = (entry) => {
+      const s = String(entry).trim();
+      if (/^\d+$/.test(s)) return getUserById(Number(s));
+      return getUserByUsername(s.startsWith('@') ? s.slice(1) : s);
+    };
     const resolveSide = (arr) => {
       return arr.map((id) => {
-        const u = getUserById(Number(id));
+        const u = resolvePlayer(id);
         if (!u) throw new Error('bad_user');
         return u;
       });

@@ -6,11 +6,11 @@ public feed. Follow your friends to keep their matches on your dashboard.
 
 ## Features
 
-- **Accounts** — sign up with your **phone number** (verified by SMS code) as the main
-  login; email/password and Google remain as alternatives. Add friends to a match
-  by their phone number — numbers are unique, names aren't.
-- **Verification** — phone numbers and emails are verified with 6-digit codes;
-  the phone OTP doubles as passwordless login
+- **Accounts** — sign up with **email + password** (OTP verified), or sign in with
+  Google or a emailed login code. Every account gets a unique **username handle**
+  (`@alex_07`) — friends find you and add you to matches by it; names aren't unique.
+- **Verification** — emails are verified with 6-digit codes; stats only count
+  confirmed results
 - **Live scoring** — point/undo/swap/reset, broadcast to all viewers in real time
 - **Audit trail** — every event on a match records who did it (creator, players, invited scorers)
 - **Result confirmation** — after a match, all players confirm the final score; **stats only count confirmed results**
@@ -62,26 +62,20 @@ with an email code. Emails are sent through [Resend](https://resend.com).
 - **Without a key** (local dev) the server runs in *dev mode*: it prints the code
   on screen so you can move straight through registration and login.
 
-## Phone login & verification (Twilio)
+## Usernames
 
-The **default sign-up path is a phone number** — that's your unique handle and
-your login. Sign-up/attach verify with an SMS code; login is code-only (no
-password). Opponents add you to a match by searching your number.
-
-- Create a project at [Twilio](https://console.twilio.com) → get your
-  **Account SID**, **Auth Token**, and a messaging number (or trial number).
-- Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE`.
-- **Without those** (local dev) the server is in dev mode and shows the code on
-  screen instead of sending SMS.
-- Trial numbers can only text numbers you've verified in the Twilio console —
-  verify your own number to test end to end.
+Every account has a unique **username** (lowercase, `a–z`, `0–9`, `_`, 3–20
+chars). It's the handle friends use to find you in the opponent picker and to
+add you to a match — you can also type an `@handle` directly when creating a
+match. Leave the field blank at sign-up and one is auto-generated from your
+name.
 
 ## Dev-mode codes (`DEV_CODES`)
 
 With `DEV_CODES=1` (and not `NODE_ENV=production`) the app shows every
-verification code **on screen** and never calls Resend/Twilio — handy while
-developing even if you already set real keys. Remove it (or set
-`NODE_ENV=production`) to force real emails/SMS.
+verification code **on screen** and never calls Resend — handy while developing
+even if you already set a real key. Remove it (or set `NODE_ENV=production`) to
+force real emails.
 
 ## Google sign-in
 
@@ -139,9 +133,6 @@ The app is one self-contained Node process, so any Node host works. Examples:
 | `BASE_URL`              | `http://localhost:4321`     | Public site URL (Google redirect)         |
 | `RESEND_API_KEY`        | (none)                      | Sends OTP emails; unset = dev mode        |
 | `EMAIL_FROM`            | `SportScore <onboarding@resend.dev>` | Verified Resend sender         |
-| `TWILIO_ACCOUNT_SID`    | (none)                      | Sends phone codes; unset = dev mode       |
-| `TWILIO_AUTH_TOKEN`     | (none)                      | Sends phone codes                         |
-| `TWILIO_PHONE`          | (none)                      | The Twilio number SMS is sent from        |
 | `DEV_CODES`             | (off)                       | `1` shows codes on screen instead of sending |
 | `GOOGLE_CLIENT_ID`      | (none)                      | Enables Google sign-in                    |
 | `GOOGLE_CLIENT_SECRET`  | (none)                      | Enables Google sign-in                    |
@@ -164,17 +155,16 @@ server/server.mjs      Express + WebSocket server (auth, broadcast, static)
 server/db.mjs          node:sqlite schema + queries (users, OTP, OAuth, scorers, confirmations)
 server/auth.mjs        register/login/session helpers
 server/api.mjs         REST API + shared match-action path (HTTP + WS)
-server/otp.mjs         Email + phone code issue/verify (rate-limited, single-use)
+server/otp.mjs         Email code issue/verify (rate-limited, single-use)
 server/email.mjs       Resend email sender (dev fallback shows the code)
-server/sms.mjs         Twilio SMS sender (dev fallback shows the code)
 server/google.mjs      Google OAuth2 flow (redirect, token exchange)
 server/env.mjs         Tiny .env loader (no dependencies)
 src/lib/sports.js      sport definitions & rules
 src/lib/engine.js      pure scoring engine (state machine, undo history)
 src/hooks/useScoreboard.js  WS scoreboard hook (live updates)
-src/pages/             Landing, Login, LoginOtp, LoginPhone, Register, VerifyEmail,
-                       VerifyPhone, Dashboard, NewMatch, MatchPage, Feed, PlayerPage
-test-e2e.mjs           End-to-end API test (register/verify -> OTP/phone login ->
+src/pages/             Landing, Login, LoginOtp, Register, VerifyEmail,
+                       Dashboard, NewMatch, MatchPage, Feed, PlayerPage
+test-e2e.mjs           End-to-end API test (register/verify -> OTP/username ->
                        scorer role -> confirm result -> stats)
 ```
 
@@ -186,8 +176,7 @@ test-e2e.mjs           End-to-end API test (register/verify -> OTP/phone login -
   snapshots are persisted and broadcast, so match state stays small even after
   hundreds of points.
 - **Auth**: `bcryptjs` password hashes + httpOnly session cookie (`ss_sess`);
-  email and phone codes are sha-256 hashed, expire in 10 minutes, and are
-  single-use.
+  email codes are sha-256 hashed, expire in 10 minutes, and are single-use.
 - **Permissions**: scoring requires creator/player/scorer; confirming the result
   requires a player or the creator (server-side for HTTP and WebSocket).
 - **Broadcast**: WebSocket clients subscribe to a match (`/ws?match=<id>`) or to

@@ -4,12 +4,13 @@ import {
   createSession,
   deleteSession,
   getUserByEmail,
-  getUserByPhone,
+  getUserByUsername,
   getUserBySession,
   createUser,
   serializeUser,
+  cleanUsername,
 } from './db.mjs';
-import { issueOtp, issuePhoneCode, normalizePhone, isPhoneOk } from './otp.mjs';
+import { issueOtp } from './otp.mjs';
 
 export const SESSION_COOKIE = 'ss_sess';
 const BCRYPT_ROUNDS = 10;
@@ -83,61 +84,10 @@ export function startSession(req, res, user) {
 }
 
 export async function registerRoute(req, res) {
-  const { name, email, phone, password } = req.body || {};
+  const { name, email, password, username } = req.body || {};
   if (!name || String(name).trim().length < 2) {
     return res.status(400).json({ error: 'Name must be at least 2 characters' });
   }
-  const cleanName = String(name).trim();
-  const cleanPhone = normalizePhone(phone) || null;
-
-  if (cleanPhone) {
-    // Phone-first signup: email and password are optional extras.
-    if (!isPhoneOk(cleanPhone)) {
-      return res.status(400).json({
-        error: 'Enter a valid phone number (e.g. +91 98765 43210 or 98765 43210).',
-      });
-    }
-    if (getUserByPhone(cleanPhone)) {
-      return res.status(409).json({ error: 'An account with that number already exists' });
-    }
-    let cleanEmail = String(email || '').trim();
-    if (cleanEmail) {
-      if (!EMAIL_RE.test(cleanEmail)) {
-        return res.status(400).json({ error: 'Please enter a valid email' });
-      }
-      if (getUserByEmail(cleanEmail)) {
-        return res.status(409).json({ error: 'An account with that email already exists' });
-      }
-    } else {
-      cleanEmail = `${cleanPhone.replace(/[^+\d]/g, '')}@phone`;
-    }
-    const cleanPassword = String(password || '');
-    if (cleanPassword && cleanPassword.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-    const user = createUser({
-      name: cleanName,
-      email: cleanEmail,
-      passwordHash: cleanPassword ? hashPassword(cleanPassword) : null,
-      emailVerified: cleanEmail.endsWith('@phone') ? 1 : 0,
-      phone: cleanPhone,
-      phoneVerified: 0,
-    });
-    try {
-      const sent = await issuePhoneCode(cleanPhone, 'register');
-      if (sent.error) throw new Error(sent.error);
-      return res.json({
-        user: startSession(req, res, user),
-        needsVerification: true,
-        ...(sent.devCode ? { devCode: sent.devCode } : {}),
-      });
-    } catch {
-      return res
-        .status(502)
-        .json({ error: 'Account created, but the verification SMS could not be sent.' });
-    }
-  }
-
   if (!email || !password) {
     return res.status(400).json({ error: 'Name, email and password are required' });
   }
@@ -151,11 +101,23 @@ export async function registerRoute(req, res) {
   if (getUserByEmail(clean)) {
     return res.status(409).json({ error: 'An account with that email already exists' });
   }
+  if (username != null && String(username).trim()) {
+    const uname = cleanUsername(username);
+    if (!/^[a-z0-9_]{3,20}$/.test(uname)) {
+      return res.status(400).json({
+        error: 'Username must be 3–20 letters, numbers or underscores (e.g. alex_07).',
+      });
+    }
+    if (getUserByUsername(uname)) {
+      return res.status(409).json({ error: 'That username is already taken' });
+    }
+  }
   const user = createUser({
-    name: cleanName,
+    name: String(name).trim(),
     email: clean,
     passwordHash: hashPassword(String(password)),
     emailVerified: 0,
+    ...(username != null && String(username).trim() ? { username } : {}),
   });
   try {
     const sent = await issueOtp(clean, 'verify');

@@ -83,66 +83,45 @@ check(
   'google redirects to accounts.google.com'
 );
 
-// 5b. Phone-first signup (phone is the main login)
-const phoneP = `+9199${Date.now().toString().slice(-8)}`;
-const phoneB = `+9170${Date.now().toString().slice(-8)}`;
-r = await req('/api/register', { method: 'POST', body: { name: 'Priya', phone: phoneP } });
-check(r.status === 200 && r.data.needsVerification === true, 'phone-first register');
-const cPhone = r.setCookie.split(';')[0];
-const phoneDev = r.data.devCode;
-r = await req('/api/me', { cookie: cPhone });
-check(r.data.user.phone === phoneP && r.data.user.phoneVerified === false, 'phone account created unverified');
+// 5b. Usernames: unique handles friends use to find you and add you to matches
+const priyaEmail = `priya${Date.now()}@test.com`;
+const priyaUser = `priya_${Date.now().toString().slice(-6)}`;
+r = await req('/api/register', { method: 'POST', body: { name: 'Priya', email: priyaEmail, password: 'secret3', username: priyaUser } });
+check(r.status === 200 && r.data.needsVerification === true, 'register with a chosen username');
+const cPriya = r.setCookie.split(';')[0];
+check(r.data.user.username === priyaUser, 'chosen username saved');
+const priyaDev = r.data.devCode;
 
-r = await req('/api/phone/verify', { method: 'POST', body: { phone: phoneP, purpose: 'register', code: '000000' } });
-check(r.status === 400, 'wrong phone code rejected');
-r = await req('/api/phone/verify', { method: 'POST', body: { phone: phoneP, purpose: 'register', code: phoneDev } });
-check(r.status === 200 && r.data.ok, 'phone register code verifies');
-r = await req('/api/me', { cookie: cPhone });
-check(r.data.user.phoneVerified === true, 'phone shows verified');
+r = await req('/api/register', { method: 'POST', body: { name: 'Dup', email: `dup${Date.now()}@test.com`, password: 'secret3', username: priyaUser } });
+check(r.status === 409, 'duplicate username rejected');
 
-r = await req('/api/register', { method: 'POST', body: { name: 'Dup', phone: phoneP } });
-check(r.status === 409, 'duplicate phone rejected');
+r = await req('/api/register', { method: 'POST', body: { name: 'Bad', email: `bad${Date.now()}@test.com`, password: 'secret4', username: 'no pe' } });
+check(r.status === 400, 'malformed username rejected');
 
-// phone login: no password needed
-r = await req('/api/phone/send', { method: 'POST', body: { phone: phoneP, purpose: 'login' } });
-const phoneLoginDev = r.data.devCode;
-check(r.status === 200 && !!phoneLoginDev, 'phone login code issued (dev)');
-r = await req('/api/phone/send', { method: 'POST', body: { phone: '+19999999999', purpose: 'login' } });
-check(r.status === 400, 'login refused for unregistered number');
-r = await req('/api/phone/send', { method: 'POST', body: { phone: phoneP, purpose: 'login' } });
-check(r.status === 200 && r.data.devCode && r.data.devCode !== phoneLoginDev, 're-sending a code mints a fresh one');
-r = await req('/api/phone/verify', { method: 'POST', body: { phone: phoneP, purpose: 'login', code: r.data.devCode } });
-const cPhoneLogin = r.setCookie ? r.setCookie.split(';')[0] : null;
-check(r.status === 200 && cPhoneLogin, 'phone login signs in with cookie');
-r = await req('/api/me', { cookie: cPhoneLogin });
-check(r.data.user.name === 'Priya', 'phone login lands on the right account');
+r = await req('/api/register', { method: 'POST', body: { name: 'Casey', email: `casey${Date.now()}@test.com`, password: 'secret5' } });
+check(r.status === 200 && /^[a-z0-9_]{3,20}$/.test(r.data.user.username || ''), 'username auto-generated when blank');
 
-// existing user attaches their phone (settings) — must be logged in
-r = await req('/api/phone/send', { method: 'POST', body: { phone: phoneB, purpose: 'verify_own' } });
-check(r.status === 401, 'attach-own-phone requires login');
-r = await req('/api/phone/send', { method: 'POST', cookie: cOtp, body: { phone: phoneB, purpose: 'verify_own' } });
-check(r.status === 200 && !!r.data.devCode, 'verify_own code sent to logged-in user');
-r = await req('/api/phone/verify', { method: 'POST', cookie: cOtp, body: { phone: phoneB, purpose: 'verify_own', code: r.data.devCode } });
-check(r.status === 200, 'verify_own links the number to the account');
+r = await req('/api/otp/verify', { method: 'POST', body: { email: priyaEmail, purpose: 'verify', code: priyaDev } });
+check(r.status === 200, 'priya verifies email');
+r = await req('/api/me', { cookie: cPriya });
+check(r.data.user.username === priyaUser && r.data.user.emailVerified === true, 'username shows on profile');
+
+// otp-created accounts get an auto username too
 r = await req('/api/me', { cookie: cOtp });
-check(r.data.user.phone === phoneB && r.data.user.phoneVerified === true, 'attached phone saved + verified');
+check(/^[a-z0-9_]{3,20}$/.test(r.data.user.username || ''), 'otp-login account has a username');
 
-// cannot claim a number someone else owns
-r = await req('/api/phone/send', { method: 'POST', cookie: cOtp, body: { phone: phoneP, purpose: 'verify_own' } });
-check(r.status === 409, 'taking another account phone refused');
-
-// searching by phone number resolves the account (opponent picker)
-const psearch = await req('/api/users?q=' + encodeURIComponent(phoneP));
-const priya = psearch.data.users.find((u) => u.email === `${phoneP.replace(/[^+\d]/g, '')}@phone`);
-check(!!priya, 'opponent findable by phone number');
+// searching by username resolves the account (opponent picker)
+const usearch = await req('/api/users?q=' + encodeURIComponent(priyaUser));
+const priya = usearch.data.users.find((u) => u.username === priyaUser);
+check(!!priya, 'opponent findable by username');
 r = await req('/api/matches', {
   method: 'POST',
   cookie: c1,
-  body: { sport: 'tennis', sides: { a: [alexId], b: [priya.id] } },
+  body: { sport: 'tennis', sides: { a: [alexId], b: ['@' + priyaUser] } },
 });
 const pmId = r.data.match?.id;
 r = await req(`/api/matches/${pmId}`, { cookie: c1 });
-check(r.data.confirmInfo?.required?.some((p) => p.name === 'Priya'), 'phone-resolved opponent added to match');
+check(r.data.confirmInfo?.required?.some((p) => p.name === 'Priya'), 'username-resolved opponent added to match');
 
 // 6. create match (bad payload must be rejected, not crash)
 r = await req('/api/matches', {

@@ -54,14 +54,6 @@ export default function Login() {
           </>
         )}
 
-        <button
-          type="button"
-          className="btn ghost big"
-          onClick={() => nav('/login-phone')}
-        >
-          📱 Sign in with your phone number
-        </button>
-
         <div className="divider">
           <span>or use email &amp; password</span>
         </div>

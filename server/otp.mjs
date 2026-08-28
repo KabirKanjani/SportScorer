@@ -6,18 +6,11 @@ import {
   deleteEmailCode,
   bumpCodeAttempts,
   countRecentCodes,
-  savePhoneCode,
-  getPhoneCode,
-  deletePhoneCode,
-  bumpPhoneAttempts,
-  countRecentPhoneCodes,
   getUserByEmail,
-  getUserByPhone,
   createUser,
   markEmailVerified,
 } from './db.mjs';
 import { sendEmail, otpEmailHtml, DEV_MODE } from './email.mjs';
-import { sendSms, DEV_MODE as SMS_DEV_MODE } from './sms.mjs';
 
 export const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_ATTEMPTS = 8;
@@ -33,23 +26,6 @@ function hashCode(code) {
 
 export function isOtpPurpose(v) {
   return v === 'verify' || v === 'login';
-}
-
-export function isPhonePurpose(v) {
-  return v === 'register' || v === 'login' || v === 'verify_own';
-}
-
-export function normalizePhone(v) {
-  return String(v || '')
-    .replace(/[\s\-().]/g, '')
-    .trim();
-}
-
-// Accepts E.164-style (+919876543210) and local formats (9876543210,
-// 09876543210). The SMS provider is the authority on whether a specific
-// number is callable, so we just sanity-check the shape here.
-export function isPhoneOk(v) {
-  return /^\+?\d{8,15}$/.test(normalizePhone(v));
 }
 
 export function nameFromEmail(email) {
@@ -132,67 +108,4 @@ export function verifyOtp(email, purpose, code) {
     });
   }
   return { ok: true, user };
-}
-
-// ---- Phone OTP -------------------------------------------------------------
-
-// Issues a fresh code for a phone. Rate-limited per phone. In dev mode (no
-// Twilio key) returns devCode so the UI can show it on screen.
-export async function issuePhoneCode(phone, purpose) {
-  const p = normalizePhone(phone);
-  if (!isPhoneOk(p) || !isPhonePurpose(purpose)) {
-    return { error: 'Enter a valid phone number (e.g. +91 98765 43210 or 98765 43210).', code: 400 };
-  }
-  const recent = countRecentPhoneCodes(p, 15);
-  if (recent >= MAX_CODES_PER_15MIN) {
-    return { error: 'Too many codes sent to this number. Try again in a few minutes.', code: 429 };
-  }
-  const code = generateCode();
-  savePhoneCode({
-    phone: p,
-    purpose,
-    codeHash: hashCode(code),
-    expiresAt: Date.now() + OTP_EXPIRY_MS,
-  });
-  if (!SMS_DEV_MODE) {
-    await sendSms(p, `Your SportScore code is ${code}. It expires in 10 minutes.`);
-  }
-  return { ok: true, phone: p, ...(SMS_DEV_MODE ? { devCode: code } : {}) };
-}
-
-// Verifies a phone code. `login` maps to the account that owns the number;
-// `register`/`verify_own` just prove ownership (account handling is the caller's).
-export function verifyPhoneCode(phone, purpose, code) {
-  const p = normalizePhone(phone);
-  if (!p || !code || !isPhonePurpose(purpose)) {
-    return { error: 'Phone, purpose and code are required', code: 400 };
-  }
-  const row = getPhoneCode(p, purpose);
-  if (!row) return { error: 'No code found. Request a new one.', code: 400 };
-
-  if (Number(row.expires_at) < Date.now()) {
-    deletePhoneCode(p, purpose);
-    return { error: 'That code has expired. Request a new one.', code: 400 };
-  }
-
-  const mine = Buffer.from(hashCode(String(code)));
-  const theirs = Buffer.from(row.code_hash);
-  const match = mine.length === theirs.length && timingSafeEqual(mine, theirs);
-
-  if (!match) {
-    bumpPhoneAttempts(p, purpose);
-    if (row.attempts + 1 >= MAX_ATTEMPTS) deletePhoneCode(p, purpose);
-    return { error: 'Incorrect code. Please check and try again.', code: 400 };
-  }
-
-  deletePhoneCode(p, purpose);
-
-  if (purpose === 'login') {
-    const user = getUserByPhone(p);
-    if (!user) {
-      return { error: 'No account is registered with that number yet. Sign up first.', code: 400 };
-    }
-    return { ok: true, phone: p, user };
-  }
-  return { ok: true, phone: p };
 }

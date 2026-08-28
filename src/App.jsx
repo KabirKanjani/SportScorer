@@ -4,10 +4,8 @@ import Navbar from './components/Navbar.jsx';
 import Landing from './pages/Landing.jsx';
 import Login from './pages/Login.jsx';
 import LoginOtp from './pages/LoginOtp.jsx';
-import LoginPhone from './pages/LoginPhone.jsx';
 import Register from './pages/Register.jsx';
 import VerifyEmail from './pages/VerifyEmail.jsx';
-import VerifyPhone from './pages/VerifyPhone.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import MatchPage from './pages/MatchPage.jsx';
 import NewMatch from './pages/NewMatch.jsx';
@@ -33,9 +31,7 @@ export default function App() {
           <Route path="/" element={user ? <Dashboard /> : <Landing />} />
           <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
           <Route path="/login-otp" element={user ? <Navigate to="/" replace /> : <LoginOtp />} />
-          <Route path="/login-phone" element={user ? <Navigate to="/" replace /> : <LoginPhone />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
-          <Route path="/verify-phone" element={<VerifyPhone />} />
           <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
           <Route path="/dashboard" element={user ? <Dashboard /> : <Navigate to="/login" replace />} />
           <Route path="/new-match" element={user ? <NewMatch /> : <Navigate to="/login" replace />} />

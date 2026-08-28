@@ -55,29 +55,9 @@ export function AuthProvider({ children }) {
     return d.user;
   }, []);
 
-  // Sign in with a phone number + SMS code.
-  const phoneLogin = useCallback(async (phone, code) => {
-    const d = await api('/api/phone/verify', {
-      method: 'POST',
-      body: { phone, purpose: 'login', code },
-    });
-    setUser(d.user);
-    return d.user;
-  }, []);
-
-  // Verify a phone code (register sign-up or attaching your own number).
-  const verifyPhone = useCallback(async (phone, code, purpose) => {
-    const d = await api('/api/phone/verify', {
-      method: 'POST',
-      body: { phone, purpose, code },
-    });
-    if (d.user) setUser(d.user);
-    return d;
-  }, []);
-
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, logout, refresh, otpLogin, phoneLogin, verifyPhone }}
+      value={{ user, loading, login, register, logout, refresh, otpLogin }}
     >
       {children}
     </AuthContext.Provider>

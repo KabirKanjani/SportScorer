@@ -5,19 +5,10 @@ import MatchCard from '../components/MatchCard.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Dashboard() {
-  const { user, refresh } = useAuth();
+  const { user } = useAuth();
   const [mine, setMine] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // Phone settings state
-  const [phone, setPhone] = useState(user?.phone || '');
-  const [phoneCode, setPhoneCode] = useState('');
-  const [phoneDev, setPhoneDev] = useState('');
-  const [phoneSent, setPhoneSent] = useState(false);
-  const [phoneMsg, setPhoneMsg] = useState('');
-  const [phoneErr, setPhoneErr] = useState('');
-  const [phoneBusy, setPhoneBusy] = useState(false);
 
   useEffect(() => {
     Promise.all([api('/api/me/live'), api(`/api/users/${user.id}`)])
@@ -32,49 +23,6 @@ export default function Dashboard() {
   const live = mine.filter((m) => m.status === 'live');
   const finished = mine.filter((m) => m.status === 'finished');
   const stats = profile?.stats;
-  const hasRealEmail = user.email && !user.email.endsWith('@phone');
-
-  async function sendPhoneCode(e) {
-    e.preventDefault();
-    setPhoneBusy(true);
-    setPhoneErr('');
-    setPhoneMsg('');
-    try {
-      const d = await api('/api/phone/send', {
-        method: 'POST',
-        body: { phone, purpose: 'verify_own' },
-      });
-      setPhoneDev(d.devCode || '');
-      setPhoneSent(true);
-      setPhoneMsg(
-        d.devCode ? 'Code created (dev preview below).' : 'We texted a code to that number.'
-      );
-    } catch (err) {
-      setPhoneErr(err.message);
-    } finally {
-      setPhoneBusy(false);
-    }
-  }
-
-  async function submitPhoneCode(e) {
-    e.preventDefault();
-    setPhoneBusy(true);
-    setPhoneErr('');
-    try {
-      await api('/api/phone/verify', {
-        method: 'POST',
-        body: { phone, purpose: 'verify_own', code: phoneCode },
-      });
-      await refresh();
-      setPhoneMsg('Phone verified ✓');
-      setPhoneSent(false);
-      setPhoneCode('');
-    } catch (err) {
-      setPhoneErr(err.message);
-    } finally {
-      setPhoneBusy(false);
-    }
-  }
 
   return (
     <div className="dashboard">
@@ -88,7 +36,7 @@ export default function Dashboard() {
         </Link>
       </header>
 
-      {hasRealEmail && !user.emailVerified && (
+      {!user.emailVerified && (
         <div className="verify-banner">
           <span>🔎 Your email isn't verified yet — matches you score won't count as confirmed results.</span>
           <Link to={`/verify-email?email=${encodeURIComponent(user.email)}`} className="btn small">
@@ -97,63 +45,15 @@ export default function Dashboard() {
         </div>
       )}
 
-      {!user.phoneVerified && (
-        <div className="verify-banner">
-          <span>📱 Your phone number isn't verified — verify it so friends can find you by number.</span>
-          <Link to="/verify-phone" className="btn small">
-            Verify now
-          </Link>
-        </div>
-      )}
-
       <section className="panel">
         <div className="panel-title">
           <span>Account</span>
-          {user.phoneVerified && <span className="cred-chip ok">✓ phone verified</span>}
-          {hasRealEmail && user.emailVerified && <span className="cred-chip ok">✓ email verified</span>}
+          {user.emailVerified && <span className="cred-chip ok">✓ email verified</span>}
         </div>
         <p className="muted small" style={{ marginTop: 0 }}>
-          Friends can add you to a match by your phone number. Yours:{' '}
-          <b>{user.phone || 'not set yet'}</b>
+          Friends add you to a match by your username. Yours:{' '}
+          <b>{user.username ? `@${user.username}` : 'not set yet'}</b>
         </p>
-        <form onSubmit={phoneSent ? submitPhoneCode : sendPhoneCode} className="otp-step">
-          <label>
-            Phone number
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+91 98765 43210"
-              autoComplete="tel"
-              disabled={phoneSent}
-            />
-          </label>
-          {phoneDev && (
-            <div className="dev-banner">
-              <b>Dev code: {phoneDev}</b>
-              <span>No SMS sender configured yet — use this code to verify.</span>
-            </div>
-          )}
-          {phoneSent ? (
-            <label>
-              Verification code
-              <input
-                className="otp-input"
-                inputMode="numeric"
-                value={phoneCode}
-                onChange={(e) => setPhoneCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="••••••"
-                required
-                autoFocus
-              />
-            </label>
-          ) : null}
-          {phoneMsg && <div className="form-ok">{phoneMsg}</div>}
-          {phoneErr && <div className="form-error">{phoneErr}</div>}
-          <button className="btn primary" disabled={phoneBusy}>
-            {phoneBusy ? 'Working…' : phoneSent ? 'Verify phone' : 'Send code'}
-          </button>
-        </form>
       </section>
 
       {loading ? (

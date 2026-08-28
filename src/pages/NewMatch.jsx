@@ -45,7 +45,7 @@ function PlayerPicker({ label, value, onChange }) {
               onChange={(e) => search(e.target.value)}
               onFocus={() => setOpen(true)}
               onBlur={() => setTimeout(() => setOpen(false), 150)}
-              placeholder="Search by name or phone…"
+              placeholder="Search by name or username…"
             />
             {open && (
               <div className="picker-results">
@@ -64,6 +64,7 @@ function PlayerPicker({ label, value, onChange }) {
                   >
                     <span className="avatar small">{u.name[0]?.toUpperCase()}</span>
                     {u.name}
+                    {u.username && <span className="username-tag">@{u.username}</span>}
                     <span className="muted small">{u.email}</span>
                   </button>
                 ))}
@@ -88,7 +89,7 @@ export default function NewMatch() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const myUser = { id: user.id, name: user.name };
+  const myUser = { id: user.id, name: user.name, username: user.username };
 
   async function create() {
     const sideA = [a1 || myUser, a2].filter(Boolean);
@@ -158,7 +159,9 @@ export default function NewMatch() {
             <div className="side-members">
               <div className="pick-chip self">
                 <span className="avatar small">{myUser.name[0]?.toUpperCase()}</span>
-                {myUser.name} <em>you</em>
+                {myUser.name}
+                {myUser.username && <span className="username-tag">@{myUser.username}</span>}
+                <em>you</em>
               </div>
               {doubles && <PlayerPicker label="Teammate" value={a2} onChange={setA2} />}
             </div>

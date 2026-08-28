@@ -56,9 +56,7 @@ export default function PlayerPage() {
         <div>
           <h1>
             {data.user.name}
-            {data.user.phoneVerified && (
-              <span className="cred-chip ok">✓ phone verified</span>
-            )}
+            {data.user.username && <span className="username-tag">@{data.user.username}</span>}
             {data.user.emailVerified && (
               <span className="cred-chip ok">✓ email verified</span>
             )}
