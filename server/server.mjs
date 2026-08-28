@@ -98,14 +98,26 @@ app.use(async (req, res) => {
     if (!filePath.startsWith(DIST_DIR)) {
       return res.status(403).send('Forbidden');
     }
+    const ext = extname(filePath) || '.html';
     let body;
     try {
       body = await readFile(filePath);
     } catch {
+      // SPA fallback is only for extensionless navigation routes, never assets.
+      if (ext !== '.html') {
+        return res.status(404).send('Not found');
+      }
       body = await readFile(join(DIST_DIR, 'index.html'));
     }
-    const ext = extname(filePath) || '.html';
     res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
+    if (ext === '.html') {
+      // Never cache HTML: hashed asset names can change on every deploy, and a
+      // stale HTML referencing a removed bundle would blank the whole page.
+      res.setHeader('Cache-Control', 'no-cache');
+    } else if (pathname.startsWith('/assets/')) {
+      // Hashed, immutable build artifacts.
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
     res.send(body);
   } catch (e) {
     res.status(500).send('Server error');
