@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: sportscore
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node server/server.mjs
+    envVars:
+      - key: NODE_VERSION
+        value: "24.4.1"
+      - key: DEV_CODES
+        value: "0"
+      - key: BASE_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
