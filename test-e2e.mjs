@@ -357,7 +357,9 @@ r = await req('/api/tournaments', { method: 'POST', cookie: c1, body: { name: 'N
 const nmId = r.data.tournament.id;
 r = await req(`/api/tournaments/${nmId}/participants`, { method: 'POST', cookie: c1, body: { usernames: [tolName] } });
 check(r.status === 200 && r.data.added.length === 1, 'creator adds a player by display name (not username)');
-r = await req(`/api/tournaments/${nmId}/participants`, { method: 'POST', cookie: c1, body: { usernames: [tolName.slice(0, 5)] } });
+// use a long-enough prefix that it can't collide with older e2e users lingering
+// in the persistent local DB (short prefixes make the lookup ambiguous + flaky)
+r = await req(`/api/tournaments/${nmId}/participants`, { method: 'POST', cookie: c1, body: { usernames: [tolName.slice(0, 8)] } });
 check(r.status === 200 && r.data.added.length === 0 && r.data.invalid.length === 0, 'partial name adds an already-added player as a no-op');
 r = await req('/api/users?q=' + encodeURIComponent(tolName.slice(0, 5)));
 check(r.status === 200 && r.data.users.some((u) => u.name === tolName), 'user search finds people by name prefix');

@@ -53,9 +53,9 @@ export default function CourtAnimation({
     ];
   }, [players]);
 
+  const court = useMemo(() => SPORTS[sportId]?.court || {}, [sportId]);
   const sportIcon = (SPORTS[sportId]?.icon || '🎾').replace(/[^\p{Extended_Pictographic}]/gu, '');
   const ball = court.ball || sportIcon;
-  const court = useMemo(() => SPORTS[sportId]?.court || {}, [sportId]);
   const drama = context?.drama || { serverIdx: 0, deuce: false, gamePoint: null, setPoint: null, matchPoint: null };
   const slow = drama.matchPoint != null ? 1.4 : drama.setPoint != null ? 1.18 : 1;
 
