@@ -12,6 +12,7 @@
     "dev:server": "node server/server.mjs",
     "build": "vite build",
     "start": "node server/server.mjs",
+    "seed": "node server/seed.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

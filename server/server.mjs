@@ -19,6 +19,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 
 import { createApi, processMatchAction, matchSummary } from './api.mjs';
 import { getMatch, getEvents, getUserBySession, canScore } from './db.mjs';
+import { seedSampleUsers } from './seed.mjs';
 import { stripHistory } from '../src/lib/engine.js';
 import { sessionTokenFromRequest } from './auth.mjs';
 
@@ -196,8 +197,10 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 server.listen(PORT, () => {
+  const seeded = seedSampleUsers();
   console.log(`\n  SportScore running`);
   console.log(`  http://localhost:${PORT}`);
   console.log(`  Opened on any device via http://<your-ip>:${PORT}`);
   console.log(`  ws://localhost:${PORT}/ws (match=ID or live feed)\n`);
+  if (seeded.seeded > 0) console.log(`  Seeded ${seeded.seeded} sample players into an empty DB`);
 });
