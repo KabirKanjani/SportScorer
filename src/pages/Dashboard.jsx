@@ -38,7 +38,7 @@ export default function Dashboard() {
 
       {!user.emailVerified && (
         <div className="verify-banner">
-          <span>🔎 Your email isn't verified yet — matches you score won't count as confirmed results.</span>
+          <span>🔎 Your email isn't verified yet — verify it to secure your account.</span>
           <Link to={`/verify-email?email=${encodeURIComponent(user.email)}`} className="btn small">
             Verify now
           </Link>

@@ -9,13 +9,12 @@ public feed. Follow your friends to keep their matches on your dashboard.
 - **Accounts** — sign up with **email + password** (OTP verified), or sign in with
   Google or a emailed login code. Every account gets a unique **username handle**
   (`@alex_07`) — friends find you and add you to matches by it; names aren't unique.
-- **Verification** — emails are verified with 6-digit codes; stats only count
-  confirmed results
+- **Verification** — emails are verified with 6-digit codes; every finished match counts toward stats
 - **Live scoring** — point/undo/swap/reset, broadcast to all viewers in real time
 - **Audit trail** — every event on a match records who did it (creator, players, invited scorers)
-- **Result confirmation** — after a match, all players confirm the final score; **stats only count confirmed results**
+- **Finished results count** — the moment a match is over, the result is valid and counts toward player stats
 - **Sports** — tennis, padel, pickleball, table tennis, squash, racquetball, badminton
-- **Public feed** — every live and finished match, filterable by sport/status, with credibility chips (confirmed / unconfirmed / suspiciously fast)
+- **Public feed** — every live and finished match, filterable by sport/status
 - **Follow players** — dashboard shows live matches from the people you follow
 - **Match history & stats** — wins/losses per player, per sport, head-to-head
 - **Doubles** — each side can have 1 or 2 players
@@ -93,9 +92,8 @@ Login redirects back to `BASE_URL`'s home page.
 - Only a match's **creator, listed players, or invited scorers** can change the score.
 - The creator is automatically the first scorer and can add more scorers later.
 - Every change is written to the match **timeline with the actor's name**.
-- Once finished, each player (or the creator) **confirms the result**. When everyone
-  agrees, the result is marked *confirmed* and only then counts toward stats.
-- Matches finished in under a minute are flagged **suspicious** on the feed.
+- The match is over once the scoreboard reaches the finishing condition; that
+  **final result is immediately valid** and counts toward player stats.
 
 ## Deploying to the cloud (free)
 
@@ -152,7 +150,7 @@ The server also loads a `.env` file from the project root if one exists
 
 ```
 server/server.mjs      Express + WebSocket server (auth, broadcast, static)
-server/db.mjs          node:sqlite schema + queries (users, OTP, OAuth, scorers, confirmations)
+server/db.mjs          node:sqlite schema + queries (users, OTP, OAuth, scorers)
 server/auth.mjs        register/login/session helpers
 server/api.mjs         REST API + shared match-action path (HTTP + WS)
 server/otp.mjs         Email code issue/verify (rate-limited, single-use)
@@ -165,7 +163,7 @@ src/hooks/useScoreboard.js  WS scoreboard hook (live updates)
 src/pages/             Landing, Login, LoginOtp, Register, VerifyEmail,
                        Dashboard, NewMatch, MatchPage, Feed, PlayerPage
 test-e2e.mjs           End-to-end API test (register/verify -> OTP/username ->
-                       scorer role -> confirm result -> stats)
+                       scorer role -> finished match counts -> stats)
 ```
 
 ## Architecture notes
@@ -177,8 +175,7 @@ test-e2e.mjs           End-to-end API test (register/verify -> OTP/username ->
   hundreds of points.
 - **Auth**: `bcryptjs` password hashes + httpOnly session cookie (`ss_sess`);
   email codes are sha-256 hashed, expire in 10 minutes, and are single-use.
-- **Permissions**: scoring requires creator/player/scorer; confirming the result
-  requires a player or the creator (server-side for HTTP and WebSocket).
+- **Permissions**: scoring requires creator/player/scorer (server-side for HTTP and WebSocket).
 - **Broadcast**: WebSocket clients subscribe to a match (`/ws?match=<id>`) or to
   the live feed (`/ws`). Every score change pushes the new state to that match's
   viewers and signals the feed to refresh.

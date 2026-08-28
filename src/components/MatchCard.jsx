@@ -61,13 +61,6 @@ export default function MatchCard({ m }) {
         {m.status === 'finished' && m.winnerNames && <span className="winner-name">Winner: {m.winnerNames}</span>}
       </div>
       <div className="card-flags">
-        {m.status === 'finished' &&
-          (m.resultConfirmed ? (
-            <span className="cred-chip ok">✓ result confirmed</span>
-          ) : (
-            <span className="cred-chip warn">⚠ result unconfirmed</span>
-          ))}
-        {m.suspicious && <span className="cred-chip warn">⏱ very fast</span>}
         {m.durationMinutes != null && <span className="cred-chip neutral">{m.durationMinutes} min</span>}
       </div>
     </Link>

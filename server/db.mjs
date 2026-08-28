@@ -44,8 +44,7 @@ db.exec(`
     created_by       INTEGER NOT NULL REFERENCES user(id),
     created_at       TEXT NOT NULL,
     updated_at       TEXT NOT NULL,
-    finished_at      TEXT,
-    result_confirmed INTEGER NOT NULL DEFAULT 0
+    finished_at      TEXT
   );
 
   CREATE TABLE IF NOT EXISTS match_player (
@@ -53,7 +52,6 @@ db.exec(`
     user_id      INTEGER NOT NULL REFERENCES user(id),
     side         INTEGER NOT NULL,
     pos          INTEGER NOT NULL,
-    confirmed_at TEXT,
     PRIMARY KEY (match_id, user_id)
   );
 
@@ -161,16 +159,8 @@ db.exec(`
   // migrate pre-existing tables, and SQLite forbids ADD COLUMN ... UNIQUE.
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_user_username ON user(username)');
 }
-// Migrations for credibility features.
+// Migrations (forward-compat for databases created by older versions).
 {
-  const mcols = db.prepare('PRAGMA table_info(match)').all();
-  if (!mcols.some((c) => c.name === 'result_confirmed')) {
-    db.exec('ALTER TABLE match ADD COLUMN result_confirmed INTEGER NOT NULL DEFAULT 0');
-  }
-  const pcols = db.prepare('PRAGMA table_info(match_player)').all();
-  if (!pcols.some((c) => c.name === 'confirmed_at')) {
-    db.exec('ALTER TABLE match_player ADD COLUMN confirmed_at TEXT');
-  }
   const ecols = db.prepare('PRAGMA table_info(event)').all();
   if (!ecols.some((c) => c.name === 'actor_id')) {
     db.exec('ALTER TABLE event ADD COLUMN actor_id INTEGER REFERENCES user(id)');
@@ -445,7 +435,7 @@ export function getMatch(id) {
 function hydrateMatch(m) {
   const players = db
     .prepare(
-      `SELECT mp.user_id, mp.side, mp.pos, mp.confirmed_at, u.name, u.email, u.avatar
+      `SELECT mp.user_id, mp.side, mp.pos, u.name, u.email, u.avatar
        FROM match_player mp JOIN user u ON u.id = mp.user_id
        WHERE mp.match_id = ? ORDER BY mp.side, mp.pos`
     )
@@ -457,7 +447,6 @@ function hydrateMatch(m) {
       name: p.name,
       email: p.email,
       avatar: p.avatar,
-      confirmedAt: p.confirmed_at,
     }));
   const scorers = db
     .prepare(
@@ -475,7 +464,6 @@ function hydrateMatch(m) {
     createdAt: m.created_at,
     updatedAt: m.updated_at,
     finishedAt: m.finished_at,
-    resultConfirmed: !!m.result_confirmed,
     players,
     scorers,
   };
@@ -570,34 +558,6 @@ export function isScorerOf(matchId, userId) {
   return !!db
     .prepare(`SELECT 1 FROM match_scorer WHERE match_id = ? AND user_id = ?`)
     .get(matchId, userId);
-}
-
-// ---------------- Result confirmation ----------------------------------------
-
-export function confirmResult(matchId, userId) {
-  if (!userId) return { ok: false };
-  const now = new Date().toISOString();
-  db.prepare(
-    `UPDATE match_player SET confirmed_at = ? WHERE match_id = ? AND user_id = ? AND confirmed_at IS NULL`
-  ).run(now, matchId, userId);
-  const allNow = allPlayersConfirmed(matchId);
-  if (allNow) {
-    db.prepare(`UPDATE match SET result_confirmed = 1 WHERE id = ?`).run(matchId);
-  }
-  return allNow;
-}
-
-function allPlayersConfirmed(matchId) {
-  const total = db
-    .prepare(`SELECT COUNT(*) AS n FROM match_player WHERE match_id = ?`)
-    .get(matchId).n;
-  if (total === 0) return false;
-  const ok = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM match_player WHERE match_id = ? AND confirmed_at IS NOT NULL`
-    )
-    .get(matchId).n;
-  return ok >= total;
 }
 
 // ---------------- Events -----------------------------------------------------

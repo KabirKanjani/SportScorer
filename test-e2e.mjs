@@ -121,7 +121,7 @@ r = await req('/api/matches', {
 });
 const pmId = r.data.match?.id;
 r = await req(`/api/matches/${pmId}`, { cookie: c1 });
-check(r.data.confirmInfo?.required?.some((p) => p.name === 'Priya'), 'username-resolved opponent added to match');
+check(r.data.players?.some((p) => p.name === 'Priya'), 'username-resolved opponent added to match');
 
 // 6. create match (bad payload must be rejected, not crash)
 r = await req('/api/matches', {
@@ -181,7 +181,7 @@ r = await req(`/api/matches/${mid}`);
 check(r.data.state && r.data.events, 'match detail + events');
 check(r.data.events.some((e) => e.detail.includes('Point')), 'events logged');
 check(r.data.events.some((e) => e.actor?.name === 'Alex' || e.actor?.name === 'Stranger'), 'events carry actor names');
-check(r.data.confirmInfo?.required?.length === 2, 'confirmInfo lists both players');
+check(r.data.players?.length === 2, 'match lists both players');
 
 // 9. feed
 r = await req('/api/matches?limit=100');
@@ -194,7 +194,7 @@ r = await req(`/api/users/${sam.id}`, { cookie: c1 });
 check(r.data.isFollowing === true, 'following reflected on profile');
 check(r.data.user.emailVerified === true, 'profile shows verified email');
 
-// 11. finish a match, then both players confirm it
+// 11. finish a match — finished results are valid right away (no confirmation)
 r = await req('/api/matches', {
   method: 'POST',
   cookie: c1,
@@ -208,35 +208,18 @@ for (let g = 0; g < 3; g++) {
 }
 r = await req(`/api/matches/${ttId}`, { cookie: c1 });
 check(r.data.match.status === 'finished', 'match finished after 3 games');
-check(r.data.match.resultConfirmed === false, 'result starts unconfirmed');
-check(r.data.canConfirm === true, 'player can see confirm action');
 
-// until confirmed, stats must not change
+// an outsider still cannot operate the scoreboard
+r = await req(`/api/matches/${ttId}/action`, { method: 'POST', cookie: strangerCookie, body: { action: { type: 'point', player: 0 } } });
+check(r.status === 403, 'outsider cannot score a match');
+
+// finished results count toward stats immediately, no confirmation needed
 r = await req(`/api/users/${alexId}`);
-check(r.data.stats.total.played === 0, 'unconfirmed match excluded from stats');
-
-// Alex confirms -> still needs Sam
-r = await req(`/api/matches/${ttId}/confirm`, { method: 'POST', cookie: c1 });
-check(r.status === 200 && r.data.allConfirmed === false, 'one confirmation is not enough');
-// hasty re-confirm reports the same state
-r = await req('/api/matches/' + ttId);
-check(r.data.confirmInfo.done.length === 1, 'confirmInfo tracks who confirmed');
-
-// non-participant cannot confirm
-r = await req(`/api/matches/${ttId}/confirm`, { method: 'POST', cookie: strangerCookie });
-check(r.status === 403, 'outsider cannot confirm');
-
-// Sam confirms -> all confirmed, feed + stats update
-r = await req(`/api/matches/${ttId}/confirm`, { method: 'POST', cookie: c2 });
-check(r.status === 200 && r.data.allConfirmed === true, 'all confirmations make it official');
-r = await req(`/api/matches/${ttId}`);
-check(r.data.match.resultConfirmed === true, 'match flagged as confirmed result');
-r = await req(`/api/users/${alexId}`);
-check(r.data.stats.total.played === 1, 'confirmed match now counts in stats');
+check(r.data.stats.total.played === 1, 'finished match counts in stats');
 const tt = r.data.stats.bySport['tabletennis'];
-check(tt && tt.wins >= 1, `Alex has a confirmed tabletennis win (${tt?.wins})`);
+check(tt && tt.wins >= 1, `Alex has a tabletennis win (${tt?.wins})`);
 r = await req('/api/matches?limit=100');
-check(r.data.matches.find((m) => m.id === ttId).resultConfirmed === true, 'feed shows confirmed result');
+check(r.data.matches.find((m) => m.id === ttId)?.status === 'finished', 'feed shows finished match');
 
 // ---- 9. Tournaments: creation, draw, linked matches, champion ----------------
 const alexU = (await req('/api/me', { cookie: c1 })).data.user?.username;

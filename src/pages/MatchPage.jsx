@@ -7,18 +7,12 @@ import CourtAnimation from '../components/CourtAnimation.jsx';
 import { getDisplay, describeDrama } from '../lib/engine.js';
 import { SPORTS } from '../lib/sports.js';
 import { api } from '../api.js';
-import { useAuth } from '../context/AuthContext.jsx';
 
 export default function MatchPage() {
   const { id } = useParams();
   const sb = useScoreboard(id);
-  const { user } = useAuth();
 
-  const [confirmInfo, setConfirmInfo] = useState(null);
   const [scorers, setScorers] = useState([]);
-  const [canConfirmApi, setCanConfirmApi] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const [confirmMsg, setConfirmMsg] = useState('');
   const [participants, setParticipants] = useState([]);
 
   // beat: which side actually won the last exchanged point (0|1|null).
@@ -83,38 +77,14 @@ export default function MatchPage() {
     api(`/api/matches/${id}`)
       .then((d) => {
         if (!alive) return;
-        setConfirmInfo(d.confirmInfo);
         setScorers(d.scorers || []);
-        setCanConfirmApi(!!d.canConfirm);
         setParticipants(d.players || []);
       })
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [id, sb.meta?.resultConfirmed]);
-
-  async function confirm() {
-    setConfirming(true);
-    setConfirmMsg('');
-    try {
-      const d = await api(`/api/matches/${id}/confirm`, { method: 'POST' });
-      setConfirmMsg(d.allConfirmed ? 'Result confirmed by everyone. 🎉' : 'Thanks! Waiting for the other players to confirm.');
-      setConfirmInfo((prev) => {
-        if (!prev) return prev;
-        const doneIds = prev.done.map((p) => p.id).concat([user.id]);
-        return {
-          required: prev.required,
-          done: prev.required.filter((p) => doneIds.includes(p.id)),
-          allConfirmed: d.allConfirmed,
-        };
-      });
-    } catch (err) {
-      setConfirmMsg(err.message);
-    } finally {
-      setConfirming(false);
-    }
-  }
+  }, [id]);
 
   return (
     <div className="match-page">
@@ -133,15 +103,6 @@ export default function MatchPage() {
             {sb.meta?.icon} {sb.meta?.sportName}
             {sb.meta?.status === 'live' && <span className="live-pill">● LIVE</span>}
             {finished && <span className="done-pill">Finished</span>}
-            {finished && sb.meta?.resultConfirmed && (
-              <span className="cred-chip ok">✓ Result confirmed</span>
-            )}
-            {finished && !sb.meta?.resultConfirmed && (
-              <span className="cred-chip warn">⚠ unconfirmed</span>
-            )}
-            {finished && sb.meta?.suspicious && (
-              <span className="cred-chip warn">⏱ finished suspiciously fast</span>
-            )}
           </h1>
           <p className="muted">
             {sb.meta?.sides?.[0]} vs {sb.meta?.sides?.[1]}
@@ -178,29 +139,6 @@ export default function MatchPage() {
 
           {sb.canScore && display && <Controls scoreboard={sb} display={display} meta={sb.meta} />}
 
-          {finished && canConfirmApi && !sb.meta?.resultConfirmed && (
-            <div className="confirm-banner">
-              <div>
-                <b>Confirm this result?</b>
-                <span className="muted">
-                  {confirmInfo ? (
-                    <span>
-                      Confirmed by {confirmInfo.done.length} of {confirmInfo.required.length}:{' '}
-                      {confirmInfo.required.map((p) => p.name).join(', ')}.
-                      Confirmed matches count toward the stats.
-                    </span>
-                  ) : (
-                    'This final score becomes official when the players agree on it.'
-                  )}
-                </span>
-              </div>
-              <button className="btn primary" onClick={confirm} disabled={confirming}>
-                {confirming ? '…' : 'I agree — this is the result'}
-              </button>
-            </div>
-          )}
-          {confirmMsg && <div className="form-ok">{confirmMsg}</div>}
-
           {sb.error && <div className="form-error">{sb.error}</div>}
 
           <div className="note-card">
@@ -217,7 +155,6 @@ export default function MatchPage() {
             {sb.meta?.durationMinutes != null && (
               <p className="muted small">
                 Match duration: {sb.meta.durationMinutes} min
-                {sb.meta.suspicious ? ' (flagged — recorded very fast)' : ''}
               </p>
             )}
           </div>

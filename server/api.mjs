@@ -28,7 +28,6 @@ import {
   isCreatorOf,
   isScorerOf,
   addScorer,
-  confirmResult,
   createTournament,
   getTournamentById,
   listTournamentsForUser,
@@ -133,7 +132,6 @@ export function matchSummary(m) {
     if (Number.isFinite(ms) && ms > 0) durationMinutes = Math.round(ms / 60000);
   }
   const finished = m.status === 'finished';
-  const suspicious = finished && durationMinutes !== null && durationMinutes < 1;
 
   return {
     id: m.id,
@@ -144,9 +142,7 @@ export function matchSummary(m) {
     createdAt: m.createdAt,
     updatedAt: m.updatedAt,
     finishedAt: m.finishedAt,
-    resultConfirmed: !!m.resultConfirmed,
     durationMinutes,
-    suspicious,
     sides: [playerSideLabel(sides[0]), playerSideLabel(sides[1])],
     sidePlayers: sides,
     score: {
@@ -492,24 +488,13 @@ export function createApi({ broadcast }) {
   api.get('/matches/:id', (req, res) => {
     const m = getMatch(req.params.id);
     if (!m) return res.status(404).json({ error: 'Match not found' });
-    const confirmInfo = {
-      required: m.players.map((p) => ({ id: p.userId, name: p.name })),
-      done: m.players
-        .filter((p) => p.confirmedAt)
-        .map((p) => ({ id: p.userId, name: p.name })),
-      allConfirmed: m.resultConfirmed,
-    };
     res.json({
       match: matchSummary(m),
       state: stripHistory(m.state),
       players: m.players,
       scorers: m.scorers,
       events: getEvents(m.id),
-      confirmInfo,
       canScore: req.user ? canScore(m.id, req.user.id) : false,
-      canConfirm:
-        req.user &&
-        (isPlayerOf(m.id, req.user.id) || isCreatorOf(m.id, req.user.id)),
     });
   });
 
@@ -530,23 +515,6 @@ export function createApi({ broadcast }) {
     addEvent(m.id, `🔧 Scorer added`, req.user.id);
     broadcast(`match:${m.id}`);
     res.json({ ok: true, scorers: getMatch(m.id).scorers });
-  });
-
-  // A player (or creator) confirms the final result agreed with everyone.
-  api.post('/matches/:id/confirm', (req, res) => {
-    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
-    const m = getMatch(req.params.id);
-    if (!m) return res.status(404).json({ error: 'Match not found' });
-    if (m.status !== 'finished') {
-      return res.status(400).json({ error: 'The match is not finished yet' });
-    }
-    if (!isPlayerOf(m.id, req.user.id) && !isCreatorOf(m.id, req.user.id)) {
-      return res.status(403).json({ error: 'Only players or the creator can confirm' });
-    }
-    const allConfirmed = confirmResult(m.id, req.user.id);
-    broadcast('feed');
-    broadcast(`match:${m.id}`);
-    res.json({ ok: true, allConfirmed, resultConfirmed: allConfirmed });
   });
 
   api.post('/matches/:id/action', async (req, res) => {
@@ -735,7 +703,7 @@ export function createApi({ broadcast }) {
 
 export function userStats(userId) {
   const matches = listMatchesByUser(userId, { limit: 500 }).filter(
-    (m) => m.status === 'finished' && m.resultConfirmed
+    (m) => m.status === 'finished'
   );
   const perSport = {};
   let total = { played: 0, wins: 0, losses: 0 };
