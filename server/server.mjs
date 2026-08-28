@@ -25,7 +25,8 @@ import { sessionTokenFromRequest } from './auth.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const DIST_DIR = normalize(join(__dirname, '..', 'dist'));
-const UPLOADS_DIR = normalize(join(__dirname, '..', 'data', 'avatars'));
+const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..', 'data');
+const UPLOADS_DIR = normalize(join(DATA_DIR, 'avatars'));
 mkdirSync(UPLOADS_DIR, { recursive: true });
 const PORT = process.env.PORT || 4321;
 

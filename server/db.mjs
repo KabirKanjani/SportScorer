@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH =
-  process.env.DATABASE_PATH || join(__dirname, '..', 'data', 'sportscore.db');
+const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..', 'data');
+const DB_PATH = process.env.DATABASE_PATH || join(DATA_DIR, 'sportscore.db');
 
 import { mkdirSync } from 'node:fs';
 mkdirSync(dirname(DB_PATH), { recursive: true });

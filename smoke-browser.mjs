@@ -16,6 +16,9 @@ page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => {
   if (m.type() === 'error') errors.push('console: ' + m.text().slice(0, 300));
 });
+page.on('response', (r) => {
+  if (r.status() >= 400) errors.push(`http ${r.status()}: ${r.url()}`);
+});
 
 let failed = 0;
 for (const url of URLS) {

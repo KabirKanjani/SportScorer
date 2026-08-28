@@ -5,9 +5,19 @@ services:
     plan: free
     buildCommand: npm install && npm run build
     startCommand: node server/server.mjs
+    # Persistent storage (keeps the DB + avatar uploads across deploys).
+    # NOTE: Render persistent disks require a paid instance — free plans get an
+    # ephemeral filesystem wiped on every deploy. Upgrade the plan, then point
+    # DATA_DIR at the disk mount and all matches/accounts/avatars survive redeploys.
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: "24.4.1"
+      - key: DATA_DIR
+        value: /data
       - key: DEV_CODES
         value: "0"
       - key: BASE_URL
