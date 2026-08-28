@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SportScore</string>
+    <string name="title_activity_main">SportScore</string>
+    <string name="package_name">com.sportscore.app</string>
+    <string name="custom_url_scheme">com.sportscore.app</string>
+</resources>

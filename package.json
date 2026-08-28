@@ -11,11 +11,13 @@
     "dev:front": "vite",
     "dev:server": "node server/server.mjs",
     "build": "vite build",
+    "cap:sync": "vite build && cap sync",
     "start": "node server/server.mjs",
     "seed": "node server/seed.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.0",
     "bcryptjs": "^2.4.3",
     "express": "^4.21.2",
     "google-auth-library": "^11.0.2",
@@ -24,6 +26,9 @@
     "react-router-dom": "^6.28.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.0",
     "puppeteer-core": "^25.9.0",
