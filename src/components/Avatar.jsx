@@ -24,7 +24,7 @@ export default function Avatar({ user, className = '', title }) {
   return (
     <span
       className={`avatar ${className}`}
-      style={{ background: `linear-gradient(135deg, ${c}, #0b1b33)`, color: '#fff' }}
+      style={{ background: `linear-gradient(135deg, ${c}, #1e3a8a)`, color: '#fff' }}
     >
       {user.name?.[0]?.toUpperCase() || '?'}
     </span>
