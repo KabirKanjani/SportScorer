@@ -26,9 +26,25 @@ import {
   isScorerOf,
   addScorer,
   confirmResult,
+  createTournament,
+  getTournamentById,
+  listTournamentsForUser,
+  getTournamentPlayers,
+  addTournamentPlayer,
+  isTournamentPlayer,
+  isTournamentCreator,
+  setTournamentStatus,
+  setTournamentWinner,
+  createFixture,
+  getFixtures,
+  getFixtureById,
+  getFixtureByMatch,
+  setFixtureMatch,
+  resolveFixtureWinner,
 } from './db.mjs';
 import { initialState, apply, getDisplay, stripHistory } from '../src/lib/engine.js';
 import { SPORTS } from '../src/lib/sports.js';
+import { buildBracket, fixtureView, onFixtureMatchFinished } from './tournament.mjs';
 import {
   attachUser,
   registerRoute,
@@ -101,7 +117,17 @@ export function matchSummary(m) {
     winner: finished ? display.winnerIdx : null,
     winnerNames:
       finished && display.winnerIdx !== null ? sides[display.winnerIdx] : null,
+    tournament: summarizeTournamentRef(m.id),
   };
+}
+
+// If this match is a tournament fixture, point back at the tournament.
+function summarizeTournamentRef(matchId) {
+  const fx = getFixtureByMatch(matchId);
+  if (!fx) return null;
+  const t = getTournamentById(fx.tournament_id);
+  if (!t) return null;
+  return { id: t.id, name: t.name, round: fx.round };
 }
 
 export function summarizeList(matches) {
@@ -170,6 +196,14 @@ export async function processMatchAction(matchId, action, user, broadcast = () =
     if (next.error) return next;
     liveStates.set(matchId, next);
     saveMatchState(matchId, stripHistory(next), { finish: next.matchOver });
+
+    // If this match belongs to a tournament fixture, record who won and crown
+    // a champion once the final is done.
+    if (next.matchOver && next.winnerIdx != null) {
+      const m = getMatch(matchId);
+      const win = m?.players.find((p) => p.side === next.winnerIdx);
+      if (win) onFixtureMatchFinished(matchId, win.userId);
+    }
 
     const names = [next.playerNames[0], next.playerNames[1]];
     if (action.type === 'point') {
@@ -449,6 +483,168 @@ export function createApi({ broadcast }) {
 
   api.get('/matches/:id/events', (req, res) => {
     res.json({ events: getEvents(req.params.id) });
+  });
+
+  // ---- Tournaments -----------------------------------------------------------
+
+  // Shared shape for tournament responses (bracket resolved for live ones).
+  const summarizeTournament = (t, viewer) => {
+    const players = getTournamentPlayers(t.id).map((p) => ({
+      id: p.userId,
+      name: p.name,
+      username: p.username,
+      seed: p.seed,
+    }));
+    const view =
+      t.status === 'draft' ? null : fixtureView(t.id, getFixtures(t.id));
+    const isCreator = viewer && isTournamentCreator(t.id, viewer.id);
+    const isPlayer = viewer && isTournamentPlayer(t.id, viewer.id);
+    return {
+      id: t.id,
+      name: t.name,
+      sport: t.sport,
+      icon: SPORTS[t.sport]?.icon || '🏆',
+      sportName: SPORTS[t.sport]?.name || t.sport,
+      visibility: t.visibility,
+      status: t.status,
+      createdAt: t.created_at,
+      creator: { id: t.creator?.id, name: t.creator?.name, username: t.creator?.username },
+      winner: t.winner ? { id: t.winner.id, name: t.winner.name } : null,
+      players,
+      rounds: view ? view.rounds : [],
+      champion: view ? view.champion : null,
+      canStart: t.status === 'draft' && isCreator && players.length >= 2,
+      canJoin: t.status === 'draft' && viewer && !isPlayer,
+      myRole: isCreator ? 'creator' : isPlayer ? 'player' : null,
+    };
+  };
+
+  api.get('/tournaments', (req, res) => {
+    const viewerId = req.user?.id ?? -1;
+    const tournaments = listTournamentsForUser(viewerId).map((t) =>
+      summarizeTournament(getTournamentById(t.id), req.user)
+    );
+    res.json({ tournaments });
+  });
+
+  api.post('/tournaments', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const { name, sport, visibility } = req.body || {};
+    const nm = String(name || '').trim();
+    if (!nm || nm.length > 80) return res.status(400).json({ error: 'Give the tournament a short name' });
+    if (!SPORTS[sport]) return res.status(400).json({ error: 'Unknown sport' });
+    const t = createTournament({
+      name: nm,
+      sport,
+      visibility: visibility === 'private' ? 'private' : 'public',
+      creatorId: req.user.id,
+    });
+    addTournamentPlayer(t.id, req.user.id); // the creator is player #1
+    res.json({ tournament: summarizeTournament(t, req.user) });
+  });
+
+  api.get('/tournaments/:id', (req, res) => {
+    const t = getTournamentById(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'Tournament not found' });
+    res.json({ tournament: summarizeTournament(t, req.user) });
+  });
+
+  // Add players by username (creator, draft only).
+  api.post('/tournaments/:id/participants', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const t = getTournamentById(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'Tournament not found' });
+    if (!isTournamentCreator(t.id, req.user.id)) {
+      return res.status(403).json({ error: 'Only the creator can add players' });
+    }
+    if (t.status !== 'draft') {
+      return res.status(400).json({ error: 'The draw already started' });
+    }
+    const list = Array.isArray(req.body?.usernames) ? req.body.usernames : [];
+    const added = [];
+    const invalid = [];
+    for (const raw of list) {
+      const u = getUserByUsername(String(raw));
+      if (!u) {
+        invalid.push(String(raw));
+        continue;
+      }
+      if (addTournamentPlayer(t.id, u.id)) added.push(u);
+    }
+    res.json({
+      tournament: summarizeTournament(getTournamentById(t.id), req.user),
+      added: added.map((u) => ({ id: u.id, name: u.name, username: u.username })),
+      invalid,
+    });
+  });
+
+  // A logged-in user joins by themselves (draft only).
+  api.post('/tournaments/:id/join', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const t = getTournamentById(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'Tournament not found' });
+    if (t.status !== 'draft') {
+      return res.status(400).json({ error: 'The draw already started' });
+    }
+    const ok = addTournamentPlayer(t.id, req.user.id);
+    res.json({ tournament: summarizeTournament(getTournamentById(t.id), req.user), joined: ok });
+  });
+
+  // Creator locks the field and draws the bracket (random seeding).
+  api.post('/tournaments/:id/start', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const t = getTournamentById(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'Tournament not found' });
+    if (!isTournamentCreator(t.id, req.user.id)) {
+      return res.status(403).json({ error: 'Only the creator can start the tournament' });
+    }
+    if (t.status !== 'draft') {
+      return res.status(400).json({ error: 'The tournament already started' });
+    }
+    const count = getTournamentPlayers(t.id).length;
+    if (count < 2) {
+      return res.status(400).json({ error: 'Need at least 2 players' });
+    }
+    buildBracket(t.id);
+    setTournamentStatus(t.id, 'live');
+    res.json({ tournament: summarizeTournament(getTournamentById(t.id), req.user) });
+  });
+
+  // Open the linked live match for a fixture. Any participant (or the creator)
+  // can kick it off; the player who does becomes the match's scorer.
+  api.post('/fixtures/:id/start-match', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const fx = getFixtureById(Number(req.params.id));
+    if (!fx) return res.status(404).json({ error: 'Fixture not found' });
+    const t = getTournamentById(fx.tournament_id);
+    if (!t) return res.status(404).json({ error: 'Tournament not found' });
+    if (t.status !== 'live') {
+      return res.status(400).json({ error: 'Tournament is not live' });
+    }
+    if (fx.status !== 'scheduled' || fx.match_id) {
+      return res.status(400).json({ error: 'This fixture already has a match' });
+    }
+    if (!isTournamentCreator(t.id, req.user.id) && !isTournamentPlayer(t.id, req.user.id)) {
+      return res.status(403).json({ error: 'You are not in this tournament' });
+    }
+    const view = fixtureView(t.id, getFixtures(t.id));
+    const node = view.rounds
+      .flatMap((r) => r.fixtures)
+      .find((f) => f.id === fx.id);
+    if (!node || !node.player1 || !node.player2) {
+      return res.status(400).json({ error: 'This fixture needs two players (no bye here)' });
+    }
+
+    const [a, b] = [node.player1, node.player2];
+    const id = randomUUID();
+    const state = initialState(t.sport, [a.name, b.name]);
+    createMatch({ id, sport: t.sport, state: stripHistory(state), createdBy: req.user.id });
+    addMatchPlayer(id, a.id, 0, 0);
+    addMatchPlayer(id, b.id, 1, 0);
+    addScorer(id, req.user.id); // whoever opened it scores it
+    addEvent(id, `${SPORTS[t.sport].name} · ${t.name} bracket match`, req.user.id);
+    setFixtureMatch(fx.id, id);
+    res.json({ matchId: id, tournament: summarizeTournament(getTournamentById(t.id), req.user) });
   });
 
   return api;

@@ -93,6 +93,12 @@ export default function MatchPage() {
           <Link to="/matches" className="back-link">
             ← All matches
           </Link>
+          {sb.meta?.tournament && (
+            <Link to={`/tournaments/${sb.meta.tournament.id}`} className="tourney-chip">
+              🏆 {sb.meta.tournament.name}
+              {sb.meta.tournament.round ? ` · Round ${sb.meta.tournament.round}` : ''}
+            </Link>
+          )}
           <h1>
             {sb.meta?.icon} {sb.meta?.sportName}
             {sb.meta?.status === 'live' && <span className="live-pill">● LIVE</span>}

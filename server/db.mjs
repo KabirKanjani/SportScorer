@@ -95,12 +95,48 @@ db.exec(`
     PRIMARY KEY (provider, provider_sub)
   );
 
+  CREATE TABLE IF NOT EXISTS tournament (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT NOT NULL,
+    sport          TEXT NOT NULL,
+    visibility     TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','private')),
+    status         TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','live','finished')),
+    creator_id     INTEGER NOT NULL REFERENCES user(id),
+    winner_user_id INTEGER REFERENCES user(id),
+    created_at     TEXT NOT NULL,
+    started_at     TEXT,
+    finished_at    TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS tournament_player (
+    tournament_id INTEGER NOT NULL REFERENCES tournament(id) ON DELETE CASCADE,
+    user_id       INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    seed          INTEGER,
+    entered_at    TEXT NOT NULL,
+    PRIMARY KEY (tournament_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS fixture (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    tournament_id INTEGER NOT NULL REFERENCES tournament(id) ON DELETE CASCADE,
+    round         INTEGER NOT NULL,
+    position      INTEGER NOT NULL,
+    player1_id    INTEGER REFERENCES user(id),
+    player2_id    INTEGER REFERENCES user(id),
+    winner_id     INTEGER REFERENCES user(id),
+    match_id      TEXT,
+    status        TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled','live','done')),
+    created_at    TEXT NOT NULL,
+    UNIQUE (tournament_id, round, position)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_match_status ON match(status);
   CREATE INDEX IF NOT EXISTS idx_match_sport ON match(sport);
   CREATE INDEX IF NOT EXISTS idx_match_updated ON match(updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_mp_user ON match_player(user_id);
   CREATE INDEX IF NOT EXISTS idx_ev_match ON event(match_id);
   CREATE INDEX IF NOT EXISTS idx_session_user ON session(user_id);
+  CREATE INDEX IF NOT EXISTS idx_fx_tournament ON fixture(tournament_id);
 `);
 
 // Migration for databases created before email verification existed.
@@ -604,4 +640,165 @@ export function recentEvents(limit = 30) {
   return db
     .prepare(`SELECT * FROM event ORDER BY id DESC LIMIT ?`)
     .all(limit);
+}
+
+// ---------------- Tournaments -------------------------------------------------
+
+export function createTournament({ name, sport, visibility, creatorId }) {
+  const now = new Date().toISOString();
+  const info = db
+    .prepare(
+      `INSERT INTO tournament (name, sport, visibility, status, creator_id, created_at)
+       VALUES (?, ?, ?, 'draft', ?, ?)`
+    )
+    .run(name, sport, visibility || 'public', creatorId, now);
+  return getTournamentById(info.lastInsertRowid);
+}
+
+export function getTournamentById(id) {
+  const t = db.prepare(`SELECT * FROM tournament WHERE id = ?`).get(id);
+  if (!t) return null;
+  t.creator = getUserById(t.creator_id);
+  t.winner = t.winner_user_id ? getUserById(t.winner_user_id) : null;
+  return t;
+}
+
+// Public tournaments plus ones the current user created / joined.
+export function listTournamentsForUser(userId) {
+  return db
+    .prepare(
+      `SELECT DISTINCT t.* FROM tournament t
+       WHERE t.visibility = 'public'
+          OR t.creator_id = ?
+          OR EXISTS (SELECT 1 FROM tournament_player tp WHERE tp.tournament_id = t.id AND tp.user_id = ?)
+       ORDER BY t.created_at DESC`
+    )
+    .all(userId, userId);
+}
+
+export function getTournamentPlayers(tournamentId) {
+  return db
+    .prepare(
+      `SELECT tp.user_id AS userId, tp.seed AS seed, u.name AS name, u.username AS username, u.email_verified AS emailVerified
+       FROM tournament_player tp JOIN user u ON u.id = tp.user_id
+       WHERE tp.tournament_id = ?
+       ORDER BY (tp.seed IS NULL), tp.seed ASC, tp.entered_at ASC`
+    )
+    .all(tournamentId);
+}
+
+export function addTournamentPlayer(tournamentId, userId) {
+  const info = db
+    .prepare(
+      `INSERT OR IGNORE INTO tournament_player (tournament_id, user_id, entered_at)
+       VALUES (?, ?, ?)`
+    )
+    .run(tournamentId, userId, new Date().toISOString());
+  return info.changes > 0;
+}
+
+export function removeTournamentPlayer(tournamentId, userId) {
+  db.prepare(`DELETE FROM tournament_player WHERE tournament_id = ? AND user_id = ?`).run(
+    tournamentId,
+    userId
+  );
+}
+
+export function isTournamentPlayer(tournamentId, userId) {
+  return !!db
+    .prepare(`SELECT 1 FROM tournament_player WHERE tournament_id = ? AND user_id = ?`)
+    .get(tournamentId, userId);
+}
+
+export function isTournamentCreator(tournamentId, userId) {
+  return !!db
+    .prepare(`SELECT 1 FROM tournament WHERE id = ? AND creator_id = ?`)
+    .get(tournamentId, userId);
+}
+
+export function setTournamentPlayerSeed(tournamentId, userId, seed) {
+  db.prepare(`UPDATE tournament_player SET seed = ? WHERE tournament_id = ? AND user_id = ?`).run(
+    seed,
+    tournamentId,
+    userId
+  );
+}
+
+export function setTournamentStatus(id, status, { started = true } = {}) {
+  const now = new Date().toISOString();
+  if (started && status === 'live') {
+    db.prepare(`UPDATE tournament SET status = ?, started_at = ? WHERE id = ?`).run(
+      status,
+      now,
+      id
+    );
+  } else {
+    db.prepare(`UPDATE tournament SET status = ? WHERE id = ?`).run(status, id);
+  }
+}
+
+export function setTournamentWinner(id, userId, status = 'finished') {
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE tournament SET status = ?, winner_user_id = ?, finished_at = ? WHERE id = ?`
+  ).run(status, userId, now, id);
+}
+
+export function createFixture({ tournamentId, round, position, player1Id = null, player2Id = null }) {
+  const info = db
+    .prepare(
+      `INSERT INTO fixture (tournament_id, round, position, player1_id, player2_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      tournamentId,
+      round,
+      position,
+      player1Id,
+      player2Id,
+      new Date().toISOString()
+    );
+  return getFixtureById(info.lastInsertRowid);
+}
+
+export function getFixtureById(id) {
+  return db.prepare(`SELECT * FROM fixture WHERE id = ?`).get(id);
+}
+
+export function getFixtures(tournamentId) {
+  return db
+    .prepare(`SELECT * FROM fixture WHERE tournament_id = ? ORDER BY round, position`)
+    .all(tournamentId)
+    .map((f) => ({
+      ...f,
+      player1: f.player1_id ? getUserById(f.player1_id) : null,
+      player2: f.player2_id ? getUserById(f.player2_id) : null,
+      winner: f.winner_id ? getUserById(f.winner_id) : null,
+    }));
+}
+
+export function getFixtureByMatch(matchId) {
+  return db.prepare(`SELECT * FROM fixture WHERE match_id = ?`).get(matchId);
+}
+
+export function setFixtureMatch(fixtureId, matchId) {
+  db.prepare(`UPDATE fixture SET match_id = ?, status = 'live' WHERE id = ?`).run(
+    matchId,
+    fixtureId
+  );
+}
+
+export function resolveFixtureWinner(fixtureId, userId) {
+  db.prepare(`UPDATE fixture SET winner_id = ?, status = 'done' WHERE id = ?`).run(
+    userId,
+    fixtureId
+  );
+}
+
+export function setFixturePlayers(fixtureId, player1Id, player2Id) {
+  db.prepare(`UPDATE fixture SET player1_id = ?, player2_id = ? WHERE id = ?`).run(
+    player1Id,
+    player2Id,
+    fixtureId
+  );
 }

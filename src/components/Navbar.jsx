@@ -17,6 +17,9 @@ export default function Navbar() {
           <NavLink to="/matches" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
             Live Feed
           </NavLink>
+          <NavLink to="/tournaments" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+            Tournaments
+          </NavLink>
           {user && (
             <>
               <NavLink to="/dashboard" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>

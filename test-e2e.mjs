@@ -1,4 +1,4 @@
-// End-to-end smoke test of the SportScore HTTP API.
+﻿// End-to-end smoke test of the SportScore HTTP API.
 const BASE = 'http://localhost:4321';
 
 async function req(path, { method = 'GET', body, cookie } = {}) {
@@ -18,8 +18,8 @@ async function req(path, { method = 'GET', body, cookie } = {}) {
 
 let failures = 0;
 function check(cond, msg) {
-  if (cond) console.log('  ✓', msg);
-  else { failures++; console.error('  ✗ FAIL:', msg); }
+  if (cond) console.log('  âœ“', msg);
+  else { failures++; console.error('  âœ— FAIL:', msg); }
 }
 
 const email = `p${Date.now()}@test.com`;
@@ -184,7 +184,7 @@ check(r.data.events.some((e) => e.actor?.name === 'Alex' || e.actor?.name === 'S
 check(r.data.confirmInfo?.required?.length === 2, 'confirmInfo lists both players');
 
 // 9. feed
-r = await req('/api/matches?limit=10');
+r = await req('/api/matches?limit=100');
 check(Array.isArray(r.data.matches) && r.data.matches.some((m) => m.id === mid), 'feed contains match');
 
 // 10. follow
@@ -235,8 +235,119 @@ r = await req(`/api/users/${alexId}`);
 check(r.data.stats.total.played === 1, 'confirmed match now counts in stats');
 const tt = r.data.stats.bySport['tabletennis'];
 check(tt && tt.wins >= 1, `Alex has a confirmed tabletennis win (${tt?.wins})`);
-r = await req('/api/matches?limit=10');
+r = await req('/api/matches?limit=100');
 check(r.data.matches.find((m) => m.id === ttId).resultConfirmed === true, 'feed shows confirmed result');
 
-console.log(failures === 0 ? '\nALL E2E TESTS PASSED ✅' : `\n${failures} TEST(S) FAILED ❌`);
+// ---- 9. Tournaments: creation, draw, linked matches, champion ----------------
+const alexU = (await req('/api/me', { cookie: c1 })).data.user?.username;
+const samU = (await req('/api/me', { cookie: c2 })).data.user?.username;
+const otpU = (await req('/api/me', { cookie: cOtp })).data.user?.username;
+
+r = await req('/api/tournaments', { method: 'POST', cookie: c1, body: { name: '   ', sport: 'tennis' } });
+check(r.status === 400, 'tournament requires a name');
+r = await req('/api/tournaments', { method: 'POST', cookie: c1, body: { name: 'E2E Cup', sport: 'bogus' } });
+check(r.status === 400, 'tournament requires a real sport');
+
+r = await req('/api/tournaments', { method: 'POST', cookie: c1, body: { name: 'E2E Cup', sport: 'tennis' } });
+check(r.status === 200 && r.data.tournament.status === 'draft', 'create tournament as draft');
+const tId = r.data.tournament.id;
+check(r.data.tournament.players.length === 1 && r.data.tournament.players[0].name === 'Alex', 'creator auto-entered as player 1');
+check(r.data.tournament.canStart === false, 'creator cannot start with 1 player');
+
+r = await req(`/api/tournaments/${tId}/participants`, { method: 'POST', cookie: c1, body: { usernames: [samU, priyaUser, 'no_such_user_xyz'] } });
+check(r.status === 200 && r.data.tournament.players.length === 3, 'creator adds players by username');
+check(r.data.invalid.length === 1, 'unknown username reported invalid');
+
+r = await req(`/api/tournaments/${tId}/join`, { method: 'POST', cookie: cOtp });
+check(r.status === 200 && r.data.tournament.players.length === 4, 'otp user joins by themselves');
+
+r = await req(`/api/tournaments/${tId}/start`, { method: 'POST', cookie: strangerCookie });
+check(r.status === 403, 'stranger cannot start the tournament');
+
+r = await req(`/api/tournaments/${tId}`);
+const draftBefore = r.data.tournament;
+check(draftBefore.status === 'draft' && draftBefore.rounds.length === 0, 'draft has no bracket yet');
+
+r = await req(`/api/tournaments/${tId}/start`, { method: 'POST', cookie: c1 });
+check(r.status === 200 && r.data.tournament.status === 'live', 'creator starts the tournament');
+const live = r.data.tournament;
+check(live.rounds.length === 2, '4 players â†’ 2 rounds');
+check(live.rounds[0].fixtures.length === 2 && live.rounds[1].fixtures.length === 1, 'round 1 has 2 fixtures, final has 1');
+check(live.players.every((p) => p.seed >= 1 && p.seed <= 4), 'every player got a seed (random draw)');
+const round1 = live.rounds[0].fixtures;
+check(round1.every((f) => f.player1 && f.player2), 'no byes with exactly 4 players');
+check(round1[1].round === 1 && round1[1].position === 1, 'fixture positions laid out');
+
+r = await req(`/api/tournaments/${tId}/participants`, { method: 'POST', cookie: c1, body: { usernames: [alexU] } });
+check(r.status === 400, 'cannot add players after the draw');
+
+const strangerTry = await req(`/api/fixtures/${round1[0].id}/start-match`, { method: 'POST', cookie: strangerCookie });
+check(strangerTry.status === 403, 'stranger cannot open a fixture match');
+
+const fxStart = await req(`/api/fixtures/${round1[0].id}/start-match`, { method: 'POST', cookie: c2 });
+check(fxStart.status === 200 && fxStart.data.matchId, 'any participant can start the fixture match');
+const fxMatchId = fxStart.data.matchId;
+
+r = await req(`/api/matches/${fxMatchId}`, { cookie: c1 });
+check(r.data.match.tournament && r.data.match.tournament.id === tId && r.data.match.tournament.round === 1, 'match carries its tournament ref');
+
+r = await req(`/api/tournaments/${tId}`);
+const withLive = r.data.tournament;
+check(withLive.rounds[0].fixtures.find((f) => f.id === round1[0].id).status === 'live', 'fixture marked live once its match is running');
+
+// finish the first fixture: side 0 wins. The person who started it (Sam) is its scorer.
+async function finishMatch(mid, cookie, winnerSide) {
+  for (let g = 0; g < 12; g++) {
+    for (let i = 0; i < 4; i++) {
+      const a = await req(`/api/matches/${mid}/action`, { method: 'POST', cookie, body: { action: { type: 'point', player: winnerSide } } });
+      if (a.status !== 200) return a.status;
+    }
+  }
+  return 200;
+}
+check(await finishMatch(fxMatchId, c2, 0) === 200, 'fixture match can be scored to completion');
+
+r = await req(`/api/tournaments/${tId}`);
+const afterQ1 = r.data.tournament;
+const played = afterQ1.rounds[0].fixtures.find((f) => f.id === round1[0].id);
+check(played.status === 'done' && played.winner?.id === round1[0].player1.id, 'fixture winner resolved from the live match');
+
+// second quarter also needs a winner before the final fills in
+const fxB = round1[1];
+const fxBStart = await req(`/api/fixtures/${fxB.id}/start-match`, { method: 'POST', cookie: c1 });
+check(fxBStart.status === 200, 'second fixture match can be started (even by the creator)');
+check(await finishMatch(fxBStart.data.matchId, c1, 1) === 200, 'second fixture scored (created+scored by Alex)');
+
+r = await req(`/api/tournaments/${tId}`);
+const afterQ2 = r.data.tournament;
+const finalNode = afterQ2.rounds[1].fixtures[0];
+check(
+  finalNode.player1?.id === round1[0].player1.id && finalNode.player2?.id === round1[1].player2.id,
+  'both winners advance into the final'
+);
+
+const finalStart = await req(`/api/fixtures/${finalNode.id}/start-match`, { method: 'POST', cookie: c1 });
+check(finalStart.status === 200 && finalStart.data.matchId, 'final can be started');
+check(await finishMatch(finalStart.data.matchId, c1, 1) === 200, 'final scored to completion');
+
+r = await req(`/api/tournaments/${tId}`);
+const done = r.data.tournament;
+check(done.status === 'finished', 'tournament finished after the final');
+check(done.champion && done.champion.id === round1[1].player2.id, 'champion is the final winner');
+check(done.winner && done.winner.id === round1[1].player2.id, 'winner surfaced on the tournament');
+
+r = await req('/api/tournaments', { cookie: c1 });
+check(r.status === 200 && r.data.tournaments.some((t) => t.id === tId), 'tournament appears in the list');
+
+// byes: a 3-player draw produces a walkover in round 1
+r = await req('/api/tournaments', { method: 'POST', cookie: c1, body: { name: 'Bye Cup', sport: 'padel' } });
+const bId = r.data.tournament.id;
+r = await req(`/api/tournaments/${bId}/participants`, { method: 'POST', cookie: c1, body: { usernames: [samU, otpU ?? 'player'] } });
+r = await req(`/api/tournaments/${bId}/start`, { method: 'POST', cookie: c1 });
+const bye = r.data.tournament;
+const byeFixture = bye.rounds[0].fixtures.find((f) => f.isBye);
+check(!!byeFixture && !!byeFixture.winner, '3 players â†’ round 1 has a resolved bye/walkover');
+
+console.log(failures === 0 ? '\nALL E2E TESTS PASSED âœ…' : `\n${failures} TEST(S) FAILED âŒ`);
 process.exit(failures === 0 ? 0 : 1);
+

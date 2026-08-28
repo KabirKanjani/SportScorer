@@ -11,6 +11,9 @@ import MatchPage from './pages/MatchPage.jsx';
 import NewMatch from './pages/NewMatch.jsx';
 import Feed from './pages/Feed.jsx';
 import PlayerPage from './pages/PlayerPage.jsx';
+import Tournaments from './pages/Tournaments.jsx';
+import NewTournament from './pages/NewTournament.jsx';
+import Tournament from './pages/Tournament.jsx';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -38,6 +41,9 @@ export default function App() {
           <Route path="/matches" element={<Feed />} />
           <Route path="/match/:id" element={<MatchPage />} />
           <Route path="/player/:id" element={<PlayerPage />} />
+          <Route path="/tournaments" element={<Tournaments />} />
+          <Route path="/tournaments/new" element={user ? <NewTournament /> : <Navigate to="/login" replace />} />
+          <Route path="/tournaments/:id" element={<Tournament />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
