@@ -3,9 +3,15 @@
 
 import { pathToFileURL } from 'node:url';
 import { hashPassword } from './auth.mjs';
-import { createUser, getUserByEmail, db } from './db.mjs';
+import { createUser, getUserByEmail, setUserAvatar, db } from './db.mjs';
 
 const BOT_PASSWORD = 'sample123';
+
+// Deterministic illustrated portraits per player (free DiceBear API, no key needed).
+const BG = 'b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf,ffd1dc';
+function avatarFor(u) {
+  return `https://api.dicebear.com/9.x/${u.gender === 'W' ? 'adventurer' : 'avataaars'}/svg?seed=${u.username}&backgroundColor=${BG}`;
+}
 
 const SAMPLE_USERS = [
   // tennis
@@ -50,22 +56,30 @@ export function seedSampleUsers({ force = false } = {}) {
   if (count > 0 && !force) return { seeded: 0, existing: 0, skipped: true };
   let seeded = 0;
   let existing = 0;
+  let photoed = 0;
   for (const u of SAMPLE_USERS) {
     const email = `bot.${u.username}@sample.sportscore`;
-    if (getUserByEmail(email)) {
+    const avatar = avatarFor(u);
+    const ex = getUserByEmail(email);
+    if (ex) {
       existing++;
+      if (ex.avatar !== avatar) {
+        setUserAvatar(ex.id, avatar);
+        photoed++;
+      }
       continue;
     }
-    createUser({
+    const created = createUser({
       name: u.name,
       email,
       passwordHash: hashPassword(BOT_PASSWORD),
       emailVerified: 1,
       username: u.username,
     });
+    setUserAvatar(created.id, avatar);
     seeded++;
   }
-  return { seeded, existing, skipped: count > 0 && !!force };
+  return { seeded, existing, photoed, skipped: count > 0 && !!force };
 }
 
 // Running `node server/seed.mjs` forces the sample players into the DB.

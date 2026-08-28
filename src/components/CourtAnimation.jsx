@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SPORTS } from '../lib/sports.js';
+import { avatarHref } from './Avatar.jsx';
 
 const PALETTE = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#22c55e'];
 
@@ -251,7 +252,7 @@ export default function CourtAnimation({
         style={{ '--c': avatarColor(tokens[0].id, 0) }}
       >
         {tokens[0].avatar ? (
-          <img className="court-avatar photo" src={`/uploads/${tokens[0].avatar}`} alt="" />
+          <img className="court-avatar photo" src={avatarHref(tokens[0].avatar)} alt="" />
         ) : (
           <span className="court-avatar">{tokens[0].name[0]?.toUpperCase() || '?'}</span>
         )}
@@ -271,7 +272,7 @@ export default function CourtAnimation({
         style={{ '--c': avatarColor(tokens[1].id, 1) }}
       >
         {tokens[1].avatar ? (
-          <img className="court-avatar photo" src={`/uploads/${tokens[1].avatar}`} alt="" />
+          <img className="court-avatar photo" src={avatarHref(tokens[1].avatar)} alt="" />
         ) : (
           <span className="court-avatar">{tokens[1].name[0]?.toUpperCase() || '?'}</span>
         )}
