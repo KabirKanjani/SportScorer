@@ -334,6 +334,25 @@ button { font-family: inherit; }
   background: var(--card-2); color: var(--accent-2); border-radius: 6px; padding: 0 4px; }
 .copy-add { display: flex; gap: 8px; margin-top: 12px; }
 .copy-add input { flex: 1; }
+.add-players { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; position: relative; }
+.add-players > .btn { align-self: flex-start; }
+.ti { position: relative; flex: 1 1 260px; display: flex; align-items: center; }
+.ti input { flex: 1; padding-right: 30px; }
+.ti-spin { position: absolute; right: 10px; color: var(--muted); font-size: 12px; pointer-events: none; }
+.ti-results { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 30; background: var(--card);
+  border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.35); overflow: hidden; max-height: 300px; overflow-y: auto; }
+.ti-result { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: none;
+  border-bottom: 1px solid var(--line); padding: 10px 12px; color: var(--text); cursor: pointer; font-size: 14px; }
+.ti-result:last-child { border-bottom: none; }
+.ti-result:hover { background: var(--bg-soft); }
+.ti-name { font-weight: 600; }
+.ti-result .username-tag { margin-left: auto; }
+.sel-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sel-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--accent); color: #fff; border-radius: 999px;
+  padding: 4px 9px 4px 12px; font-size: 13px; font-weight: 600; }
+.sel-chip .username-tag { color: #cfe8ff; margin-left: 2px; font-weight: 600; }
+.sel-chip button { background: none; border: none; color: #fff; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; opacity: .8; }
+.sel-chip button:hover { opacity: 1; }
 .btn.big { font-size: 16px; padding: 14px 22px; }
 .tourney-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin-top: 18px; }
 .tourney-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; color: var(--text);

@@ -18,6 +18,7 @@ import {
   countFollowers,
   followingIds,
   searchUsers,
+  resolveUserEntry,
   getUserById,
   getUserByUsername,
   serializeUser,
@@ -309,7 +310,7 @@ export function createApi({ broadcast }) {
   // Users / players
   api.get('/users', (req, res) => {
     const q = String(req.query.q || '').trim();
-    res.json({ users: searchUsers(q, 8) });
+    res.json({ users: searchUsers(q, 50) });
   });
 
   api.get('/me/live', (req, res) => {
@@ -564,12 +565,17 @@ export function createApi({ broadcast }) {
     const added = [];
     const invalid = [];
     for (const raw of list) {
-      const u = getUserByUsername(String(raw));
-      if (!u) {
-        invalid.push(String(raw));
+      const { user, matches } = resolveUserEntry(raw);
+      if (!user) {
+        const entry = String(raw).trim();
+        invalid.push(
+          matches > 1
+            ? `${entry} (${matches} players match — use a full @username)`
+            : entry
+        );
         continue;
       }
-      if (addTournamentPlayer(t.id, u.id)) added.push(u);
+      if (addTournamentPlayer(t.id, user.id)) added.push(user);
     }
     res.json({
       tournament: summarizeTournament(getTournamentById(t.id), req.user),

@@ -294,6 +294,24 @@ export function searchUsers(q, limit = 8) {
     .all(like, like, limit);
 }
 
+// Tolerant lookup for player references: exact username, then exact name, then
+// a partial (name/username) match. Returns the full user plus how many records
+// matched, so callers can tell an "ambiguous" miss from a plain miss.
+export function resolveUserEntry(raw, limit = 8) {
+  const s = String(raw || '').trim().replace(/^@+/, '');
+  const out = { user: null, matches: 0 };
+  if (!s) return out;
+  const byUsername = getUserByUsername(s);
+  if (byUsername) return { user: byUsername, matches: 1 };
+  const byName = db
+    .prepare(`SELECT id FROM user WHERE lower(name) = lower(?)`)
+    .all(s);
+  if (byName.length === 1) return { user: getUserById(byName[0].id), matches: 1 };
+  const hits = searchUsers(s, limit);
+  if (hits.length === 1) return { user: getUserById(hits[0].id), matches: 1 };
+  return { user: null, matches: hits.length };
+}
+
 export function serializeUser(u) {
   return u
     ? {

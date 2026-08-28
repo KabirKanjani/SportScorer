@@ -348,6 +348,20 @@ const bye = r.data.tournament;
 const byeFixture = bye.rounds[0].fixtures.find((f) => f.isBye);
 check(!!byeFixture && !!byeFixture.winner, '3 players â†’ round 1 has a resolved bye/walkover');
 
+// tolerant player lookup: a freshly-registered display name resolves when adding
+const tolStamp = Date.now().toString().slice(-7);
+r = await req('/api/register', { method: 'POST', body: { name: `Tol${tolStamp}`, email: `tol${tolStamp}@test.com`, password: 'hunter22' } });
+const tolC = r.setCookie.split(';')[0];
+const tolName = r.data.user.name;
+r = await req('/api/tournaments', { method: 'POST', cookie: c1, body: { name: 'Name Match Cup', sport: 'tennis' } });
+const nmId = r.data.tournament.id;
+r = await req(`/api/tournaments/${nmId}/participants`, { method: 'POST', cookie: c1, body: { usernames: [tolName] } });
+check(r.status === 200 && r.data.added.length === 1, 'creator adds a player by display name (not username)');
+r = await req(`/api/tournaments/${nmId}/participants`, { method: 'POST', cookie: c1, body: { usernames: [tolName.slice(0, 5)] } });
+check(r.status === 200 && r.data.added.length === 0 && r.data.invalid.length === 0, 'partial name adds an already-added player as a no-op');
+r = await req('/api/users?q=' + encodeURIComponent(tolName.slice(0, 5)));
+check(r.status === 200 && r.data.users.some((u) => u.name === tolName), 'user search finds people by name prefix');
+
 console.log(failures === 0 ? '\nALL E2E TESTS PASSED âœ…' : `\n${failures} TEST(S) FAILED âŒ`);
 process.exit(failures === 0 ? 0 : 1);
 
