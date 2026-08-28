@@ -31,6 +31,7 @@ export default function CourtAnimation({
 }) {
   const trackRef = useRef(null);
   const ballRef = useRef(null);
+  const wallRef = useRef(null);
   const leftRef = useRef(null);
   const rightRef = useRef(null);
   const xRef = useRef(rand() < 0.5 ? -46 : 46);
@@ -53,6 +54,8 @@ export default function CourtAnimation({
   }, [players]);
 
   const sportIcon = (SPORTS[sportId]?.icon || '🎾').replace(/[^\p{Extended_Pictographic}]/gu, '');
+  const ball = court.ball || sportIcon;
+  const court = useMemo(() => SPORTS[sportId]?.court || {}, [sportId]);
   const drama = context?.drama || { serverIdx: 0, deuce: false, gamePoint: null, setPoint: null, matchPoint: null };
   const slow = drama.matchPoint != null ? 1.4 : drama.setPoint != null ? 1.18 : 1;
 
@@ -117,32 +120,60 @@ export default function CourtAnimation({
       jobs.add(t);
     };
 
+    const r = court.rally || { dur: [480, 950], bounce: [22, 40], gap: [200, 620] };
+    const wall = !!court.wall;
+
     const crossShot = (target) => {
       if (cancelled || gen !== genRef.current) return;
       const from = xRef.current;
       let to = target === 0 ? -46 : 46;
       if (to === from) to = -to;
-      const bounce = rand(22, 40);
-      const dur = rand(480, 950) * slow;
+      const bounce = rand(r.bounce[0], r.bounce[1]);
+      const dur = rand(r.dur[0], r.dur[1]) * slow;
       const xk = [
         { transform: `translateX(${from}%)` },
         { transform: 'translateX(0%)', offset: 0.5 },
         { transform: `translateX(${to}%)` },
       ];
-      const yk = [
-        { transform: 'translateY(0px)' },
-        { transform: `translateY(${-bounce}px)`, offset: 0.55 },
-        { transform: 'translateY(0px)' },
-      ];
+      const yk = wall
+        ? [
+            { transform: 'translateY(0px)' },
+            { transform: `translateY(${-bounce * 0.4}px) scale(1.35)`, offset: 0.48 },
+            { transform: `translateY(${-bounce}px)`, offset: 0.68 },
+            { transform: 'translateY(2px)', offset: 0.94 },
+            { transform: 'translateY(0px)' },
+          ]
+        : court.arc === 'high'
+          ? [
+              { transform: 'translateY(0px)' },
+              { transform: `translateY(${-bounce}px)`, offset: 0.62 },
+              { transform: 'translateY(3px)', offset: 0.94 },
+              { transform: 'translateY(0px)' },
+            ]
+          : [
+              { transform: 'translateY(0px)' },
+              { transform: `translateY(${-bounce}px)`, offset: 0.5 },
+              { transform: 'translateY(0px)' },
+            ];
       const xa = track.animate(xk, { duration: dur, easing: 'ease-in-out' });
       const ya = ball.animate(yk, { duration: dur, easing: 'ease-in-out' });
       jobs.add(xa);
       jobs.add(ya);
       xRef.current = to;
       bump(to === -46 ? 0 : 1);
+      if (wall && wallRef.current) {
+        const t = setTimeout(() => {
+          if (wallRef.current) {
+            wallRef.current.classList.add('hit');
+            const t2 = setTimeout(() => wallRef.current?.classList.remove('hit'), 140);
+            jobs.add(t2);
+          }
+        }, dur * 0.46);
+        jobs.add(t);
+      }
       xa.addEventListener('finish', () => {
         if (cancelled || gen !== genRef.current) return;
-        const t = setTimeout(() => crossShot(Math.random() < 0.5 ? 0 : 1), rand(200, 620));
+        const t = setTimeout(() => crossShot(Math.random() < 0.5 ? 0 : 1), rand(r.gap[0], r.gap[1]));
         jobs.add(t);
       });
     };
@@ -156,7 +187,7 @@ export default function CourtAnimation({
         else clearTimeout(j);
       }
     };
-  }, [started, live, rally, slow]);
+  }, [started, live, rally, slow, court]);
 
   // Point landing: fly the ball to the real winner, pop them, then restart.
   useEffect(() => {
@@ -241,8 +272,16 @@ export default function CourtAnimation({
     : '';
 
   return (
-    <div className={`court ${hot ? 'hot' : ''}`} aria-hidden="true">
-      <div className="court-net" />
+    <div
+      className={`court ${hot ? 'hot' : ''}${court.kind ? ` court-${court.kind}` : ''}`}
+      aria-hidden="true"
+    >
+      {court.wall ? (
+        <div className="court-wall" ref={wallRef} style={{ '--wall-c': court.accent }} />
+      ) : (
+        <div className="court-net" />
+      )}
+      {court.surface && <div className="court-surface">{court.surface}</div>}
 
       <div
         className={`court-player side-0 ${flash.active && flash.winner === 0 ? 'win' : ''} ${
@@ -298,8 +337,8 @@ export default function CourtAnimation({
       )}
 
       <div className="court-ball-track" ref={trackRef}>
-        <div className="court-ball" ref={ballRef}>
-          {flash.active && flash.winner !== null ? `${sportIcon}💥` : sportIcon}
+        <div className={`court-ball ${court.kind || ''}`} ref={ballRef}>
+          {flash.active && flash.winner !== null ? `${ball}💥` : ball}
         </div>
       </div>
 
@@ -312,7 +351,7 @@ export default function CourtAnimation({
                 left: `${p.left}%`,
                 width: p.size,
                 height: p.size * 0.4,
-                background: p.color,
+                background: i % 3 === 0 && court.accent ? court.accent : p.color,
                 animationDelay: `${p.delay}s`,
                 animationDuration: `${p.dur}s`,
                 '--drift': `${p.drift}px`,

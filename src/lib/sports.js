@@ -21,6 +21,15 @@ export const SPORTS = {
     tennis: { noAd: false },
     serve: 'game',
     description: 'Best of 3 sets · 6 games each, win by 2 · tiebreak at 6-6',
+    court: {
+      kind: 'tennis',
+      surface: 'Hard court',
+      accent: '#4ade80',
+      ball: '🎾',
+      wall: false,
+      arc: 'mid',
+      rally: { dur: [540, 1000], bounce: [26, 42], gap: [240, 640] },
+    },
   },
   padel: {
     id: 'padel',
@@ -32,6 +41,15 @@ export const SPORTS = {
     tennis: { noAd: false },
     serve: 'game',
     description: 'Best of 3 sets · 6 games each, win by 2 · tiebreak at 6-6',
+    court: {
+      kind: 'padel',
+      surface: 'Glass padel box',
+      accent: '#38bdf8',
+      ball: '🎾',
+      wall: false,
+      arc: 'mid',
+      rally: { dur: [760, 1250], bounce: [20, 36], gap: [340, 720] },
+    },
   },
   squash: {
     id: 'squash',
@@ -43,6 +61,15 @@ export const SPORTS = {
     scoring: 'rally',
     serve: 'lastWinner',
     description: 'Best of 5 games · first to 11, win by 2 (PAR scoring)',
+    court: {
+      kind: 'box',
+      surface: 'Front-wall squash',
+      accent: '#fb7185',
+      ball: '⚫',
+      wall: true,
+      arc: 'low',
+      rally: { dur: [400, 820], bounce: [12, 24], gap: [150, 420] },
+    },
   },
   racquetball: {
     id: 'racquetball',
@@ -54,6 +81,15 @@ export const SPORTS = {
     scoring: 'rally',
     serve: 'lastWinner',
     description: 'Best of 5 games · first to 15, win by 2',
+    court: {
+      kind: 'box',
+      surface: 'Four-wall box',
+      accent: '#60a5fa',
+      ball: '🔵',
+      wall: true,
+      arc: 'low',
+      rally: { dur: [340, 700], bounce: [12, 26], gap: [140, 400] },
+    },
   },
   pickleball: {
     id: 'pickleball',
@@ -65,6 +101,15 @@ export const SPORTS = {
     scoring: 'sideout', // only serving side scores
     serve: 'sideout',
     description: 'Best of 3 games · first to 11, win by 2 · side-out scoring',
+    court: {
+      kind: 'pickle',
+      surface: 'Painted pickle court',
+      accent: '#facc15',
+      ball: '🟡',
+      wall: false,
+      arc: 'low',
+      rally: { dur: [620, 1050], bounce: [16, 28], gap: [300, 640] },
+    },
   },
   tabletennis: {
     id: 'tabletennis',
@@ -76,6 +121,15 @@ export const SPORTS = {
     scoring: 'rally',
     serve: 'switch2',
     description: 'Best of 5 games · first to 11, win by 2 · serve every 2 points',
+    court: {
+      kind: 'table',
+      surface: 'Competition table',
+      accent: '#f8fafc',
+      ball: '⚪',
+      wall: false,
+      arc: 'low',
+      rally: { dur: [340, 680], bounce: [14, 26], gap: [140, 360] },
+    },
   },
   badminton: {
     id: 'badminton',
@@ -87,6 +141,15 @@ export const SPORTS = {
     scoring: 'rally',
     serve: 'switch2',
     description: 'Best of 3 games · first to 21, win by 2 · serve every 2 points',
+    court: {
+      kind: 'hall',
+      surface: 'Competition hall',
+      accent: '#a3e635',
+      ball: '🏸',
+      wall: false,
+      arc: 'high',
+      rally: { dur: [900, 1500], bounce: [44, 62], gap: [380, 760] },
+    },
   },
 };
 
