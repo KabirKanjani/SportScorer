@@ -1,8 +1,9 @@
 import { useParams, Link } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useScoreboard } from '../hooks/useScoreboard.js';
 import Scoreboard from '../components/Scoreboard.jsx';
 import Controls from '../components/Controls.jsx';
+import CourtAnimation from '../components/CourtAnimation.jsx';
 import { getDisplay } from '../lib/engine.js';
 import { api } from '../api.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -17,9 +18,35 @@ export default function MatchPage() {
   const [canConfirmApi, setCanConfirmApi] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [confirmMsg, setConfirmMsg] = useState('');
+  const [participants, setParticipants] = useState([]);
+
+  // beat: which side actually won the last exchanged point (0|1|null).
+  const prevStateRef = useRef(null);
+  const [beat, setBeat] = useState({ winner: null, tick: 0 });
 
   const display = useMemo(() => (sb.state ? getDisplay(sb.state) : null), [sb.state]);
   const finished = sb.meta?.status === 'finished';
+
+  useEffect(() => {
+    if (!sb.state) return;
+    const prev = prevStateRef.current;
+    prevStateRef.current = sb.state;
+    if (!prev) {
+      setBeat((b) => ({ winner: null, tick: b.tick + 1 }));
+      return;
+    }
+    const w = (x) => x ?? 0;
+    const totals = (s) => [
+      w(s.setWins[0]) * 1e6 + w(s.currentSetGames[0]) * 1e3 + w(s.gamePoints[0]),
+      w(s.setWins[1]) * 1e6 + w(s.currentSetGames[1]) * 1e3 + w(s.gamePoints[1]),
+    ];
+    const a = totals(prev);
+    const b = totals(sb.state);
+    let winner = null;
+    if (b[0] > a[0] && b[1] === a[1]) winner = 0;
+    else if (b[1] > a[1] && b[0] === a[0]) winner = 1;
+    setBeat((bd) => ({ winner, tick: bd.tick + 1 }));
+  }, [sb.state]);
 
   useEffect(() => {
     let alive = true;
@@ -29,6 +56,7 @@ export default function MatchPage() {
         setConfirmInfo(d.confirmInfo);
         setScorers(d.scorers || []);
         setCanConfirmApi(!!d.canConfirm);
+        setParticipants(d.players || []);
       })
       .catch(() => {});
     return () => {
@@ -93,7 +121,17 @@ export default function MatchPage() {
       <div className="match-layout">
         <div className="match-main">
           {display ? (
-            <Scoreboard display={display} />
+            <>
+              <CourtAnimation
+                players={participants}
+                sportId={sb.state.sport}
+                beat={beat}
+                live={!finished && !sb.state.matchOver}
+                started={!!sb.state.started}
+                finished={finished}
+              />
+              <Scoreboard display={display} />
+            </>
           ) : (
             <div className="waiting">
               <div className="spinner" />
