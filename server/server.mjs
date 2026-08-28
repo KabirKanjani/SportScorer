@@ -11,6 +11,7 @@ import './env.mjs'; // load .env before anything reads process.env
 
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { mkdirSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -23,6 +24,8 @@ import { sessionTokenFromRequest } from './auth.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const DIST_DIR = normalize(join(__dirname, '..', 'dist'));
+const UPLOADS_DIR = normalize(join(__dirname, '..', 'data', 'avatars'));
+mkdirSync(UPLOADS_DIR, { recursive: true });
 const PORT = process.env.PORT || 4321;
 
 // ---------------------------------------------------------------------------
@@ -65,6 +68,9 @@ function summarizeMeta(m) {
 }
 
 app.use('/api', createApi({ broadcast }));
+
+// Uploaded avatars (PNG/JPG/GIF/WebP written by the API).
+app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d', immutable: true }));
 
 // Static files (production build)
 const MIME = {

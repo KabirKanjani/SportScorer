@@ -25,6 +25,7 @@ db.exec(`
     password_hash  TEXT NOT NULL DEFAULT '',
     email_verified INTEGER NOT NULL DEFAULT 0,
     username       TEXT,
+    avatar         TEXT,
     created_at     TEXT NOT NULL
   );
 
@@ -152,6 +153,9 @@ db.exec(`
   }
   if (!cols.some((c) => c.name === 'username')) {
     db.exec('ALTER TABLE user ADD COLUMN username TEXT');
+  }
+  if (!cols.some((c) => c.name === 'avatar')) {
+    db.exec('ALTER TABLE user ADD COLUMN avatar TEXT');
   }
   // A unique index matters more than a column constraint here: real platforms
   // migrate pre-existing tables, and SQLite forbids ADD COLUMN ... UNIQUE.
@@ -281,13 +285,13 @@ export function getUserById(id) {
 export function searchUsers(q, limit = 8) {
   if (!q) {
     return db
-      .prepare(`SELECT id, name, username, email FROM user ORDER BY name LIMIT ?`)
+      .prepare(`SELECT id, name, username, avatar, email FROM user ORDER BY name LIMIT ?`)
       .all(limit);
   }
   const like = `%${q}%`;
   return db
     .prepare(
-      `SELECT id, name, username, email FROM user
+      `SELECT id, name, username, avatar, email FROM user
        WHERE name LIKE ? OR username LIKE ?
        ORDER BY name LIMIT ?`
     )
@@ -318,11 +322,20 @@ export function serializeUser(u) {
         id: u.id,
         name: u.name,
         username: u.username || null,
+        avatar: u.avatar || null,
         email: u.email,
         emailVerified: !!u.email_verified,
         createdAt: u.created_at,
       }
     : null;
+}
+
+export function setUserAvatar(userId, file) {
+  db.prepare('UPDATE user SET avatar = ? WHERE id = ?').run(file, userId);
+}
+
+export function clearUserAvatar(userId) {
+  db.prepare('UPDATE user SET avatar = NULL WHERE id = ?').run(userId);
 }
 
 // ---------------- Sessions ---------------------------------------------------
@@ -432,7 +445,7 @@ export function getMatch(id) {
 function hydrateMatch(m) {
   const players = db
     .prepare(
-      `SELECT mp.user_id, mp.side, mp.pos, mp.confirmed_at, u.name, u.email
+      `SELECT mp.user_id, mp.side, mp.pos, mp.confirmed_at, u.name, u.email, u.avatar
        FROM match_player mp JOIN user u ON u.id = mp.user_id
        WHERE mp.match_id = ? ORDER BY mp.side, mp.pos`
     )
@@ -443,6 +456,7 @@ function hydrateMatch(m) {
       pos: p.pos,
       name: p.name,
       email: p.email,
+      avatar: p.avatar,
       confirmedAt: p.confirmed_at,
     }));
   const scorers = db
@@ -697,7 +711,7 @@ export function listTournamentsForUser(userId) {
 export function getTournamentPlayers(tournamentId) {
   return db
     .prepare(
-      `SELECT tp.user_id AS userId, tp.seed AS seed, u.name AS name, u.username AS username, u.email_verified AS emailVerified
+      `SELECT tp.user_id AS userId, tp.seed AS seed, u.name AS name, u.username AS username, u.avatar AS avatar, u.email_verified AS emailVerified
        FROM tournament_player tp JOIN user u ON u.id = tp.user_id
        WHERE tp.tournament_id = ?
        ORDER BY (tp.seed IS NULL), tp.seed ASC, tp.entered_at ASC`

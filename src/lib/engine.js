@@ -255,6 +255,66 @@ function finishMatch(s, idx) {
 
 // ---- Computed display values --------------------------------------------------
 
+// "Pressure" readout for the live court: which side (if any) is one point from
+// taking the game / set / match, plus who is serving. Mirrors the engine's own
+// rules so the animation can react to real drama (match points, deuce, etc.).
+export function describeDrama(state) {
+  const sport = SPORTS[state.sport];
+  const [a, b] = state.gamePoints;
+  const out = {
+    serverIdx: state.serverIdx,
+    deuce: false,
+    gamePoint: null,
+    setPoint: null,
+    matchPoint: null,
+  };
+
+  if (sport.family === 'sets') {
+    const inTb = state.tiebreak;
+    const endsGame = (ta, tb) =>
+      inTb
+        ? (ta >= 7 && ta - tb >= 2) || (tb >= 7 && tb - ta >= 2)
+        : (ta >= 4 && ta - tb >= 2) || (tb >= 4 && tb - ta >= 2);
+
+    if (!inTb && a >= 3 && b >= 3) {
+      out.deuce = a === b;
+      if (a === b + 1) out.gamePoint = 0;
+      else if (b === a + 1) out.gamePoint = 1;
+    } else {
+      for (const s of [0, 1]) {
+        const ta = s === 0 ? a + 1 : a;
+        const tb = s === 1 ? b + 1 : b;
+        if (endsGame(ta, tb)) out.gamePoint = s;
+      }
+    }
+
+    if (out.gamePoint != null) {
+      const setGames = state.currentSetGames[out.gamePoint] + 1;
+      const oppGames = state.currentSetGames[1 - out.gamePoint];
+      const setEnds = inTb
+        ? true
+        : setGames >= sport.set.gamesToWin && setGames - oppGames >= sport.set.winBy;
+      if (setEnds) {
+        if (state.setWins[out.gamePoint] + 1 >= sport.match.setsToWin) out.matchPoint = out.gamePoint;
+        else out.setPoint = out.gamePoint;
+      }
+    }
+  } else {
+    const { target, winBy } = sport.game;
+    for (const s of [0, 1]) {
+      const ta = s === 0 ? a + 1 : a;
+      const tb = s === 1 ? b + 1 : b;
+      if ((ta >= target && ta - tb >= winBy) || (tb >= target && tb - ta >= winBy)) {
+        out.gamePoint = s;
+      }
+    }
+    if (out.gamePoint != null && state.setWins[out.gamePoint] + 1 >= sport.match.gamesToWin) {
+      out.matchPoint = out.gamePoint;
+    }
+  }
+  return out;
+}
+
 export function getDisplay(state) {
   const sport = SPORTS[state.sport];
   const out = {

@@ -9,9 +9,11 @@ export default function Login() {
   const [params] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState(params.get('error') || '');
   const [busy, setBusy] = useState(false);
   const [google, setGoogle] = useState(false);
+  const noPassword = error.includes('No password');
 
   useEffect(() => {
     api('/api/auth/google/config')
@@ -39,7 +41,7 @@ export default function Login() {
         <h1>Welcome back</h1>
         <p className="muted">Log in to score matches and follow your friends.</p>
 
-        {google && (
+        {google ? (
           <>
             <button
               type="button"
@@ -52,11 +54,12 @@ export default function Login() {
               <span>or</span>
             </div>
           </>
+        ) : (
+          <p className="muted small">
+            New here? <Link to="/register">Create an account</Link> — or sign in with a{' '}
+            <Link to="/login-otp">login code</Link>.
+          </p>
         )}
-
-        <div className="divider">
-          <span>or use email &amp; password</span>
-        </div>
 
         <label>
           Email
@@ -65,27 +68,38 @@ export default function Login() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="email"
+            autoFocus
           />
         </label>
-        <label>
+        <label className="pw-field">
           Password
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-          />
+          <span className="pw-wrap">
+            <input
+              type={showPw ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+            <button type="button" className="pw-eye" onClick={() => setShowPw((s) => !s)}>
+              {showPw ? '🙈' : '👁'}
+            </button>
+          </span>
         </label>
+
+        {noPassword && (
+          <div className="form-hint">
+            This account has no password. You can sign in with a login code instead:
+          </div>
+        )}
         {error && <div className="form-error">{error}</div>}
         <button className="btn primary big" disabled={busy}>
           {busy ? 'Logging in…' : 'Log in'}
         </button>
-        <p className="muted small">
-          Forgot your password? <Link to="/login-otp">Sign in with a code</Link>
-        </p>
-        <p className="muted small">
-          New here? <Link to="/register">Create an account</Link>
-        </p>
+
+        <div className="auth-links">
+          <Link to="/login-otp">Sign in with a code</Link>
+          <Link to="/register">Create an account</Link>
+        </div>
       </form>
     </div>
   );

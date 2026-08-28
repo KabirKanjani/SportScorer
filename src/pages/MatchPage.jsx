@@ -4,7 +4,8 @@ import { useScoreboard } from '../hooks/useScoreboard.js';
 import Scoreboard from '../components/Scoreboard.jsx';
 import Controls from '../components/Controls.jsx';
 import CourtAnimation from '../components/CourtAnimation.jsx';
-import { getDisplay } from '../lib/engine.js';
+import { getDisplay, describeDrama } from '../lib/engine.js';
+import { SPORTS } from '../lib/sports.js';
 import { api } from '../api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 
@@ -27,6 +28,19 @@ export default function MatchPage() {
   const display = useMemo(() => (sb.state ? getDisplay(sb.state) : null), [sb.state]);
   const finished = sb.meta?.status === 'finished';
 
+  const court = useMemo(() => {
+    if (!sb.state || !display) return null;
+    return {
+      points: display.points,
+      deuce: display.deuce,
+      tiebreak: display.tiebreak,
+      sets: display.setCounts,
+      games: display.gamesInSet,
+      targetLabel: display.targetLabel,
+      drama: describeDrama(sb.state),
+    };
+  }, [display, sb.state]);
+
   useEffect(() => {
     if (!sb.state) return;
     const prev = prevStateRef.current;
@@ -45,7 +59,23 @@ export default function MatchPage() {
     let winner = null;
     if (b[0] > a[0] && b[1] === a[1]) winner = 0;
     else if (b[1] > a[1] && b[0] === a[0]) winner = 1;
-    setBeat((bd) => ({ winner, tick: bd.tick + 1 }));
+
+    let gameWon = null;
+    let setWon = null;
+    let matchWon = null;
+    if (winner !== null) {
+      const g = sb.state;
+      const over = g.matchOver && g.winnerIdx === winner;
+      const gameInc = g.currentSetGames[winner] !== prev.currentSetGames[winner];
+      const setInc = g.setWins[winner] !== prev.setWins[winner];
+      if (gameInc) gameWon = winner;
+      else if (setInc) {
+        if (over) matchWon = winner;
+        else if (SPORTS[g.sport]?.family === 'sets') setWon = winner;
+        else gameWon = winner;
+      }
+    }
+    setBeat((bd) => ({ winner, tick: bd.tick + 1, gameWon, setWon, matchWon }));
   }, [sb.state]);
 
   useEffect(() => {
@@ -132,6 +162,7 @@ export default function MatchPage() {
                 players={participants}
                 sportId={sb.state.sport}
                 beat={beat}
+                context={court}
                 live={!finished && !sb.state.matchOver}
                 started={!!sb.state.started}
                 finished={finished}

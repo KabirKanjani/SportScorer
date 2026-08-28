@@ -1,5 +1,6 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import Avatar from './Avatar.jsx';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -29,7 +30,7 @@ export default function Navbar() {
                 + New Match
               </NavLink>
               <NavLink to={`/player/${user.id}`} className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-                <span className="avatar">{user.name[0]?.toUpperCase()}</span>
+                <span className="nav-avatar"><Avatar user={user} /></span>
                 {user.name}
               </NavLink>
             </>

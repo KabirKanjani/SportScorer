@@ -10,12 +10,24 @@ function avatarColor(id, idx) {
 
 const rand = (min, max) => Math.random() * (max - min) + min;
 
-// Little “live court” above the scoreboard: two profile-avatars face off and a
-// ball rallies back and forth until a point lands. The point winner comes from
-// the real score (`beat.winner`), so the animation always ends with the correct
-// player taking the point — never the loser. Rally choreography is randomized
-// (who you hit to, speed, bounce height).
-export default function CourtAnimation({ players = [], sportId, beat, live, started, finished }) {
+// Live court above the scoreboard.
+//
+// What makes it about the *game* (not just a pretty rally):
+//  - the on-court HUD always shows the REAL running score, flipping on each point
+//  - the serving player is flagged (custom per-sport rotation comes from the engine)
+//  - a commentary line describes real pressure (match point, set point, deuce, adv)
+//  - rally speed reacts to drama: slower + a pulse on match point
+//  - GAME / SET calls land when those really happen; a confetti celebration fires
+//    only on the actual match-winning point.
+export default function CourtAnimation({
+  players = [],
+  sportId,
+  beat,
+  context = null,
+  live,
+  started,
+  finished,
+}) {
   const trackRef = useRef(null);
   const ballRef = useRef(null);
   const leftRef = useRef(null);
@@ -25,6 +37,8 @@ export default function CourtAnimation({ players = [], sportId, beat, live, star
   const [flash, setFlash] = useState({ winner: null, active: false });
   const [rally, setRally] = useState(0);
   const [hold, setHold] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [confetti, setConfetti] = useState([]);
 
   const tokens = useMemo(() => {
     const sides = [null, null];
@@ -38,16 +52,52 @@ export default function CourtAnimation({ players = [], sportId, beat, live, star
   }, [players]);
 
   const sportIcon = (SPORTS[sportId]?.icon || '🎾').replace(/[^\p{Extended_Pictographic}]/gu, '');
+  const drama = context?.drama || { serverIdx: 0, deuce: false, gamePoint: null, setPoint: null, matchPoint: null };
+  const slow = drama.matchPoint != null ? 1.4 : drama.setPoint != null ? 1.18 : 1;
 
-  // Keep the court on screen briefly after the final point so the winning beat
-  // can play out, then hide it.
+  // Keep the court on screen briefly after the final point for the celebration.
   useEffect(() => {
     if (finished && typeof beat?.winner === 'number') {
       setHold(true);
-      const t = setTimeout(() => setHold(false), 950);
+      const t = setTimeout(() => setHold(false), beat?.matchWon != null ? 2600 : 1200);
       return () => clearTimeout(t);
     }
   }, [beat?.tick, finished]);
+
+  // GAME / SET call when those milestones really land.
+  useEffect(() => {
+    const w = beat?.gameWon;
+    if (w === 0 || w === 1) {
+      setToast({ kind: 'game', side: w, text: `Game ${tokens[w].name.split(' ')[0]}` });
+      const t = setTimeout(() => setToast(null), 1400);
+      return () => clearTimeout(t);
+    }
+    if (beat?.setWon === 0 || beat?.setWon === 1) {
+      const s = beat.setWon;
+      setToast({ kind: 'set', side: s, text: `Set ${tokens[s].name.split(' ')[0]}` });
+      const t = setTimeout(() => setToast(null), 1800);
+      return () => clearTimeout(t);
+    }
+    setToast(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [beat?.tick]);
+
+  // Confetti on the actual match-winning point only.
+  useEffect(() => {
+    if (beat?.matchWon !== 0 && beat?.matchWon !== 1) return;
+    const pieces = Array.from({ length: 42 }, (_, i) => ({
+      left: Math.random() * 100,
+      delay: Math.random() * 0.7,
+      dur: 1.1 + Math.random() * 0.9,
+      color: PALETTE[i % PALETTE.length],
+      size: 6 + Math.random() * 7,
+      drift: (Math.random() - 0.5) * 90,
+    }));
+    setConfetti(pieces);
+    const t = setTimeout(() => setConfetti([]), 2800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [beat?.tick]);
 
   // Rally loop: shots bounce across the court until the next score lands.
   useEffect(() => {
@@ -70,9 +120,9 @@ export default function CourtAnimation({ players = [], sportId, beat, live, star
       if (cancelled || gen !== genRef.current) return;
       const from = xRef.current;
       let to = target === 0 ? -46 : 46;
-      if (to === from) to = -to; // never hit the same player twice in a row
+      if (to === from) to = -to;
       const bounce = rand(22, 40);
-      const dur = rand(480, 950);
+      const dur = rand(480, 950) * slow;
       const xk = [
         { transform: `translateX(${from}%)` },
         { transform: 'translateX(0%)', offset: 0.5 },
@@ -105,7 +155,7 @@ export default function CourtAnimation({ players = [], sportId, beat, live, star
         else clearTimeout(j);
       }
     };
-  }, [started, live, rally]);
+  }, [started, live, rally, slow]);
 
   // Point landing: fly the ball to the real winner, pop them, then restart.
   useEffect(() => {
@@ -120,7 +170,7 @@ export default function CourtAnimation({ players = [], sportId, beat, live, star
     }
     if (!track || !ball) return;
     let cancelled = false;
-    genRef.current += 1; // stop any in-flight rally
+    genRef.current += 1;
     const from = xRef.current;
     const to = winner === 0 ? -60 : 60;
     const xk = [
@@ -153,32 +203,123 @@ export default function CourtAnimation({ players = [], sportId, beat, live, star
 
   if ((finished && !hold) || !started) return null;
 
+  // ---- HUD: real running score -----------------------------------------------
+  const points = context?.points || ['0', '0'];
+  const deuce = context?.deuce;
+  const scoreTxt = deuce
+    ? 'DEUCE'
+    : points.some((p) => p === 'AD')
+      ? points.join('·')
+      : points.join('–');
+
+  // ---- Commentary line ---------------------------------------------------------
+  let caption = '';
+  if (finished && beat?.matchWon != null) {
+    caption = `🏆 ${tokens[beat.matchWon].name.split(' ')[0]} wins the match!`;
+  } else if (deuce) {
+    caption = `Deuce · ${tokens[drama.serverIdx]?.name.split(' ')[0]} serves`;
+  } else if (drama.matchPoint != null) {
+    caption = `⚡ Match point ${tokens[drama.matchPoint].name.split(' ')[0]}`;
+  } else if (drama.setPoint != null) {
+    caption = `Set point ${tokens[drama.setPoint].name.split(' ')[0]}`;
+  } else if (drama.gamePoint != null) {
+    const gp = drama.gamePoint;
+    caption =
+      points[gp] === 'AD'
+        ? `Advantage ${tokens[gp].name.split(' ')[0]}`
+        : `Game point ${tokens[gp].name.split(' ')[0]}`;
+  } else if (context?.tiebreak) {
+    caption = `Tiebreak · ${tokens[drama.serverIdx]?.name.split(' ')[0]} serves`;
+  } else {
+    caption = `${tokens[drama.serverIdx]?.name.split(' ')[0]} is serving`;
+  }
+
+  const hot = drama.matchPoint != null || (drama.setPoint != null && !finished);
+  const setLine = context
+    ? `Sets ${context?.sets?.[0] ?? 0}–${context?.sets?.[1] ?? 0}`
+    : '';
+
   return (
-    <div className="court" aria-hidden="true">
+    <div className={`court ${hot ? 'hot' : ''}`} aria-hidden="true">
       <div className="court-net" />
+
       <div
-        className={`court-player side-0 ${flash.active && flash.winner === 0 ? 'win' : ''}`}
+        className={`court-player side-0 ${flash.active && flash.winner === 0 ? 'win' : ''} ${
+          drama.serverIdx === 0 ? 'serving' : ''
+        }`}
         ref={leftRef}
         style={{ '--c': avatarColor(tokens[0].id, 0) }}
       >
-        <span className="court-avatar">{tokens[0].name[0]?.toUpperCase() || '?'}</span>
+        {tokens[0].avatar ? (
+          <img className="court-avatar photo" src={`/uploads/${tokens[0].avatar}`} alt="" />
+        ) : (
+          <span className="court-avatar">{tokens[0].name[0]?.toUpperCase() || '?'}</span>
+        )}
         <span className="court-name">{tokens[0].name.split(' ')[0]}</span>
+        <span className="court-momentum">
+          {Array.from({ length: context?.sets?.[0] ?? 0 }, (_, i) => (
+            <i key={i} />
+          ))}
+        </span>
       </div>
+
       <div
-        className={`court-player side-1 ${flash.active && flash.winner === 1 ? 'win' : ''}`}
+        className={`court-player side-1 ${flash.active && flash.winner === 1 ? 'win' : ''} ${
+          drama.serverIdx === 1 ? 'serving' : ''
+        }`}
         ref={rightRef}
         style={{ '--c': avatarColor(tokens[1].id, 1) }}
       >
-        <span className="court-avatar">{tokens[1].name[0]?.toUpperCase() || '?'}</span>
+        {tokens[1].avatar ? (
+          <img className="court-avatar photo" src={`/uploads/${tokens[1].avatar}`} alt="" />
+        ) : (
+          <span className="court-avatar">{tokens[1].name[0]?.toUpperCase() || '?'}</span>
+        )}
         <span className="court-name">{tokens[1].name.split(' ')[0]}</span>
+        <span className="court-momentum">
+          {Array.from({ length: context?.sets?.[1] ?? 0 }, (_, i) => (
+            <i key={i} />
+          ))}
+        </span>
       </div>
+
+      <div className="court-hud" key={scoreTxt + ':' + context?.sets?.join('-')}>
+        <span className="court-score">{scoreTxt}</span>
+        {setLine && <span className="court-setline">{setLine}</span>}
+      </div>
+      <div className="court-caption">{caption}</div>
+
+      {toast && (
+        <div className={`court-toast ${toast.kind} side-${toast.side}`}>
+          {toast.text}
+          <span className="court-toast-sub">{toast.kind === 'set' ? setLine : 'one more point…'}</span>
+        </div>
+      )}
+
       <div className="court-ball-track" ref={trackRef}>
         <div className="court-ball" ref={ballRef}>
-          {flash.active && flash.winner !== null
-            ? `${sportIcon}💥`
-            : sportIcon}
+          {flash.active && flash.winner !== null ? `${sportIcon}💥` : sportIcon}
         </div>
       </div>
+
+      {confetti.length > 0 && (
+        <div className="court-confetti">
+          {confetti.map((p, i) => (
+            <i
+              key={i}
+              style={{
+                left: `${p.left}%`,
+                width: p.size,
+                height: p.size * 0.4,
+                background: p.color,
+                animationDelay: `${p.delay}s`,
+                animationDuration: `${p.dur}s`,
+                '--drift': `${p.drift}px`,
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

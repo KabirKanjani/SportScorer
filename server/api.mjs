@@ -22,6 +22,8 @@ import {
   getUserById,
   getUserByUsername,
   serializeUser,
+  setUserAvatar,
+  clearUserAvatar,
   isPlayerOf,
   isCreatorOf,
   isScorerOf,
@@ -68,6 +70,44 @@ import {
   exchangeGoogleCode,
   BASE_URL,
 } from './google.mjs';
+
+// ---- Avatar uploads ---------------------------------------------------------
+import { mkdirSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const AVATAR_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'data',
+  'avatars'
+);
+mkdirSync(AVATAR_DIR, { recursive: true });
+const MAX_AVATAR_BYTES = 3 * 1024 * 1024;
+
+// Sniff the leading bytes so we only ever store real image files.
+function sniffImage(buf) {
+  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'png';
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpg';
+  if (buf.length >= 4 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return 'gif';
+  if (
+    buf.length >= 12 &&
+    buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+    buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50
+  ) return 'webp';
+  return null;
+}
+
+function storeAvatar(user, buf, ext) {
+  const file = `u${user.id}_${Date.now().toString(36)}.${ext}`;
+  writeFileSync(join(AVATAR_DIR, file), buf);
+  if (user.avatar && existsSync(join(AVATAR_DIR, user.avatar))) {
+    try {
+      unlinkSync(join(AVATAR_DIR, user.avatar));
+    } catch {}
+  }
+  setUserAvatar(user.id, file);
+}
 
 // ---- Match summaries (used by the feed + match cards) -----------------------
 
@@ -249,6 +289,40 @@ export function createApi({ broadcast }) {
   api.get('/me/following', (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Not logged in' });
     res.json({ ids: followingIds(req.user.id) });
+  });
+
+  // Upload / remove a profile picture (PNG/JPG/GIF/WebP, up to 3MB).
+  api.post('/me/avatar', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const { data } = req.body || {};
+    if (typeof data !== 'string' || !/^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/.test(data)) {
+      return res.status(400).json({ error: 'Send an image as a base64 data URL' });
+    }
+    const buf = Buffer.from(data.slice(data.indexOf(',') + 1), 'base64');
+    if (buf.length === 0 || buf.length > MAX_AVATAR_BYTES) {
+      return res.status(400).json({ error: `Image must be between 1 byte and ${MAX_AVATAR_BYTES / 1024 / 1024}MB` });
+    }
+    const ext = sniffImage(buf);
+    if (!ext) {
+      return res.status(400).json({ error: 'That file is not a PNG, JPG, GIF or WebP image' });
+    }
+    const u = getUserById(req.user.id);
+    if (!u) return res.status(401).json({ error: 'Not logged in' });
+    storeAvatar(u, buf, ext);
+    res.json({ user: serializeUser(getUserById(req.user.id)) });
+  });
+
+  api.delete('/me/avatar', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const u = getUserById(req.user.id);
+    if (!u) return res.status(401).json({ error: 'Not logged in' });
+    if (u.avatar && existsSync(join(AVATAR_DIR, u.avatar))) {
+      try {
+        unlinkSync(join(AVATAR_DIR, u.avatar));
+      } catch {}
+    }
+    clearUserAvatar(u.id);
+    res.json({ user: serializeUser(getUserById(req.user.id)) });
   });
 
   // Email OTP: send a code, then verify it (verify account or passwordless login)
@@ -494,6 +568,7 @@ export function createApi({ broadcast }) {
       id: p.userId,
       name: p.name,
       username: p.username,
+      avatar: p.avatar,
       seed: p.seed,
     }));
     const view =

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { SPORTS, SPORT_IDS } from '../lib/sports.js';
 import { api } from '../api.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import Avatar from '../components/Avatar.jsx';
 
 // A picker that searches registered users by name.
 function PlayerPicker({ label, value, onChange }) {
@@ -62,7 +63,7 @@ function PlayerPicker({ label, value, onChange }) {
                       setQ('');
                     }}
                   >
-                    <span className="avatar small">{u.name[0]?.toUpperCase()}</span>
+                    <Avatar user={u} className="small" />
                     {u.name}
                     {u.username && <span className="username-tag">@{u.username}</span>}
                     <span className="muted small">{u.email}</span>
@@ -158,7 +159,7 @@ export default function NewMatch() {
             <div className="side-head">Side A — You ({myUser.name})</div>
             <div className="side-members">
               <div className="pick-chip self">
-                <span className="avatar small">{myUser.name[0]?.toUpperCase()}</span>
+                <Avatar user={myUser} className="small" />
                 {myUser.name}
                 {myUser.username && <span className="username-tag">@{myUser.username}</span>}
                 <em>you</em>

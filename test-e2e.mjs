@@ -362,6 +362,19 @@ check(r.status === 200 && r.data.added.length === 0 && r.data.invalid.length ===
 r = await req('/api/users?q=' + encodeURIComponent(tolName.slice(0, 5)));
 check(r.status === 200 && r.data.users.some((u) => u.name === tolName), 'user search finds people by name prefix');
 
+// profile picture: upload a tiny PNG base64, confirm it shows up, then remove it
+const tinyPng =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+r = await req('/api/me/avatar', { method: 'POST', cookie: tolC, body: { data: tinyPng } });
+check(r.status === 200 && r.data.user && r.data.user.avatar && r.data.user.avatar.endsWith('.png'), 'user uploads an avatar image');
+const avFile = r.data.user.avatar;
+r = await req('/api/me', { method: 'GET', cookie: tolC });
+check(r.status === 200 && r.data.user && r.data.user.avatar === avFile, 'avatar persists on /api/me');
+r = await req('/api/users/' + r.data.user.id, { method: 'GET' });
+check(r.status === 200 && r.data.user && r.data.user.avatar === avFile, 'avatar shows on a player profile');
+r = await req('/api/me/avatar', { method: 'DELETE', cookie: tolC });
+check(r.status === 200 && r.data.user && r.data.user.avatar === null, 'user can remove their avatar');
+
 console.log(failures === 0 ? '\nALL E2E TESTS PASSED âœ…' : `\n${failures} TEST(S) FAILED âŒ`);
 process.exit(failures === 0 ? 0 : 1);
 
