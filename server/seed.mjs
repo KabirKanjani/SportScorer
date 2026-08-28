@@ -7,9 +7,42 @@ import { createUser, getUserByEmail, setUserAvatar, db } from './db.mjs';
 
 const BOT_PASSWORD = 'sample123';
 
-// Deterministic illustrated portraits per player (free DiceBear API, no key needed).
+const W = 'https://upload.wikimedia.org/wikipedia/commons/thumb';
+
+// Real photos from Wikimedia (Wikipedia infobox images). Players without a
+// usable photo fall back to illustrated DiceBear avatars.
+const PHOTOS = {
+  alcaraz: `${W}/d/d4/25th_Laureus_World_Sports_Awards_-_Red_Carpet_-_Carlos_Alcaraz_-_240422_192324_%28cropped%29.jpg/330px-25th_Laureus_World_Sports_Awards_-_Red_Carpet_-_Carlos_Alcaraz_-_240422_192324_%28cropped%29.jpg`,
+  federer: `${W}/1/11/Roger_Federer_2015_%28cropped%29.jpg/330px-Roger_Federer_2015_%28cropped%29.jpg`,
+  swiatek: `${W}/9/98/Iga_Swiatek_2023_Cropped_%2B_Retouched.jpg/330px-Iga_Swiatek_2023_Cropped_%2B_Retouched.jpg`,
+  serenaw: `${W}/2/2f/Guests_at_the_2026_Met_Gala_209_%28cropped%29.jpg/330px-Guests_at_the_2026_Met_Gala_209_%28cropped%29.jpg`,
+  coello: `${W}/5/5e/Arturo_Coello_%28cropped%29.jpg/330px-Arturo_Coello_%28cropped%29.jpg`,
+  tapia: `${W}/5/5a/Augustin_Tapia_%28cropped%29.jpg/330px-Augustin_Tapia_%28cropped%29.jpg`,
+  josemaria: `${W}/8/8c/Paula_Juanmaria.jpg/330px-Paula_Juanmaria.jpg`,
+  farag: `${W}/3/32/Ali_Farag_at_the_2023-24_PSA_World_Tour_Finals-06.jpg/330px-Ali_Farag_at_the_2023-24_PSA_World_Tour_Finals-06.jpg`,
+  elshoragy: `${W}/6/6f/Mohamed_Elshorbagy_%282012%29.jpg/330px-Mohamed_Elshorbagy_%282012%29.jpg`,
+  elsherbini: `${W}/3/38/Nour_El_Sherbini_at_the_2023-24_PSA_World_Tour_Finals-4_%28cropped%29.jpg/330px-Nour_El_Sherbini_at_the_2023-24_PSA_World_Tour_Finals-4_%28cropped%29.jpg`,
+  elhammamy: `${W}/7/78/Hania_El_Hammamy_at_the_2023-24_PSA_World_Tour_Finals-03.jpg/330px-Hania_El_Hammamy_at_the_2023-24_PSA_World_Tour_Finals-03.jpg`,
+  waselenchuk: `${W}/6/65/Kane_Waselenchuk_at_2014_US_Open_Racquetball_Championships.jpg/330px-Kane_Waselenchuk_at_2014_US_Open_Racquetball_Championships.jpg`,
+  carson: `${W}/a/a9/Rocky_Carson_%282006_Racquetball_World_Championships%29.jpg/330px-Rocky_Carson_%282006_Racquetball_World_Championships%29.jpg`,
+  longoria: `${W}/4/4a/Paola_Longoria.png/330px-Paola_Longoria.png`,
+  mjvargas: `${W}/d/df/Mar%C3%ADa_Jos%C3%A9_Vargas_KCA_2016.jpg/330px-Mar%C3%ADa_Jos%C3%A9_Vargas_KCA_2016.jpg`,
+  benjohns: `${W}/9/98/Ben_Johns_and_Collin_Johns.jpg/330px-Ben_Johns_and_Collin_Johns.jpg`,
+  alw: `${W}/b/b2/Anna_Leigh_waters_%28cropped%29.jpg/330px-Anna_Leigh_waters_%28cropped%29.jpg`,
+  malong: `${W}/1/1b/Ma_Long_ATTC2017_29.jpeg/330px-Ma_Long_ATTC2017_29.jpeg`,
+  fanzhendong: `${W}/9/90/ITTF_World_Tour_2017_German_Open_Fan_Zhendong_03.jpg/330px-ITTF_World_Tour_2017_German_Open_Fan_Zhendong_03.jpg`,
+  chenmeng: `${W}/3/37/Chen_Meng.png/330px-Chen_Meng.png`,
+  sunyingsha: `${W}/1/16/Sun_Yingsha.png/330px-Sun_Yingsha.png`,
+  axelsen: `${W}/a/a9/Viktor_Axelsen_-_Indonesia_Masters_2018.jpg/330px-Viktor_Axelsen_-_Indonesia_Masters_2018.jpg`,
+  momota: `${W}/1/19/Kento_Momota_2024.png/330px-Kento_Momota_2024.png`,
+  anseyoung: `${W}/0/09/Hangzhou_AsianGames_Team_Korea_05_%28An_Se-young%29.jpg/330px-Hangzhou_AsianGames_Team_Korea_05_%28An_Se-young%29.jpg`,
+  taitzuying: `${W}/8/8f/Tai_Tzu-ying_in_2024.jpg/330px-Tai_Tzu-ying_in_2024.jpg`,
+};
+
+// Deterministic illustrated portraits (free DiceBear API, no key needed).
 const BG = 'b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf,ffd1dc';
 function avatarFor(u) {
+  if (PHOTOS[u.username]) return PHOTOS[u.username];
   return `https://api.dicebear.com/9.x/${u.gender === 'W' ? 'adventurer' : 'avataaars'}/svg?seed=${u.username}&backgroundColor=${BG}`;
 }
 
