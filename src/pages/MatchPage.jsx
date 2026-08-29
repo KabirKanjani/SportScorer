@@ -5,6 +5,7 @@ import Scoreboard from '../components/Scoreboard.jsx';
 import Scoreline from '../components/Scoreline.jsx';
 import Controls from '../components/Controls.jsx';
 import CourtAnimation from '../components/CourtAnimation.jsx';
+import MatchReport from '../components/MatchReport.jsx';
 import { getDisplay, describeDrama } from '../lib/engine.js';
 import { SPORTS } from '../lib/sports.js';
 import { api } from '../api.js';
@@ -216,6 +217,15 @@ export default function MatchPage() {
 
       {display && <Scoreline display={display} />}
 
+      {finished && (
+        <MatchReport
+          display={display}
+          events={sb.events}
+          meta={sb.meta}
+          venue={pre?.preMatch?.venue}
+        />
+      )}
+
       {pre && !pre.started && (
         <div className="panel pregame">
           <div className="panel-title">Pre-match</div>
@@ -330,8 +340,8 @@ export default function MatchPage() {
               detailWinner={prompt.winner != null ? sideNames[prompt.winner] : null}
               detailPromptOn={detailEnabled && prompt.winner != null && prompt.tick > 0}
               detailOptions={details}
-              onRecordDetail={(d) => {
-                sb.recordDetail(d);
+              onRecordDetail={(o) => {
+                sb.recordDetail({ detail: o.label, key: o.key, player: prompt.winner });
                 setPrompt((p) => ({ ...p, winner: null }));
               }}
               onDismissDetail={() => setPrompt((p) => ({ ...p, winner: null }))}

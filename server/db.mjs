@@ -175,6 +175,14 @@ db.exec(`
   if (!ecols.some((c) => c.name === 'actor_id')) {
     db.exec('ALTER TABLE event ADD COLUMN actor_id INTEGER REFERENCES user(id)');
   }
+  // Structured point-detail stats (match report): kind = normalized outcome
+  // (ace/doublefault/winner/...), player_idx = which side the detail belongs to.
+  if (!ecols.some((c) => c.name === 'kind')) {
+    db.exec('ALTER TABLE event ADD COLUMN kind TEXT');
+  }
+  if (!ecols.some((c) => c.name === 'player_idx')) {
+    db.exec('ALTER TABLE event ADD COLUMN player_idx INTEGER');
+  }
 }
 
 // ---------------- Users ------------------------------------------------------
@@ -607,19 +615,29 @@ export function setPreMatch(matchId, patch) {
 
 // ---------------- Events -----------------------------------------------------
 
-export function addEvent(matchId, detail, actorId = null) {
+export function addEvent(matchId, detail, actorId = null, opts = {}) {
+  const { kind = null, playerIdx = null } = opts || {};
   const seq =
     db.prepare(`SELECT COALESCE(MAX(seq),0)+1 AS n FROM event WHERE match_id=?`).get(matchId).n;
   db.prepare(
-    `INSERT INTO event (match_id, seq, detail, actor_id, created_at) VALUES (?,?,?,?,?)`
-  ).run(matchId, seq, detail, actorId ?? null, new Date().toISOString());
+    `INSERT INTO event (match_id, seq, detail, actor_id, kind, player_idx, created_at)
+     VALUES (?,?,?,?,?,?,?)`
+  ).run(
+    matchId,
+    seq,
+    detail,
+    actorId ?? null,
+    kind ?? null,
+    playerIdx ?? null,
+    new Date().toISOString()
+  );
   return seq;
 }
 
 export function getEvents(matchId) {
   return db
     .prepare(
-      `SELECT e.id, e.seq, e.detail, e.created_at, e.actor_id, u.name AS actor_name
+      `SELECT e.id, e.seq, e.detail, e.created_at, e.actor_id, e.kind, e.player_idx, u.name AS actor_name
        FROM event e LEFT JOIN user u ON u.id = e.actor_id
        WHERE e.match_id=? ORDER BY e.seq`
     )
@@ -629,6 +647,8 @@ export function getEvents(matchId) {
       seq: e.seq,
       detail: e.detail,
       createdAt: e.created_at,
+      kind: e.kind,
+      playerIdx: e.player_idx,
       actor: e.actor_id ? { id: e.actor_id, name: e.actor_name } : null,
     }));
 }

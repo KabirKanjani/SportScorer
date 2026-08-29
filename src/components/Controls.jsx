@@ -58,7 +58,7 @@ export default function Controls({
             </div>
             <div className="point-detail-chips">
               {validOptions.map((o, i) => (
-                <button key={i} className="chip" onClick={() => onRecordDetail(o.label)}>
+                <button key={o.key || i} className="chip" onClick={() => onRecordDetail(o)}>
                   {o.label}
                 </button>
               ))}

@@ -241,10 +241,17 @@ r = await req(`/api/matches/${ovId}/start`, { method: 'POST', cookie: c1 });
 check(r.status === 200, 'override match started');
 r = await req(`/api/matches/${ovId}/action`, { method: 'POST', cookie: c1, body: { action: { type: 'point', player: 1 } } });
 check(r.status === 200, 'point scored on override match');
-r = await req(`/api/matches/${ovId}/action`, { method: 'POST', cookie: c1, body: { action: { type: 'detail', detail: 'Ace serve' } } });
+r = await req(`/api/matches/${ovId}/action`, { method: 'POST', cookie: c1, body: { action: { type: 'detail', detail: 'Ace serve', key: 'serve', player: 1 } } });
 check(r.status === 200, 'point detail recorded');
 r = await req(`/api/matches/${ovId}`);
 check(r.data.events.some((e) => e.detail.includes('Ace serve') && e.actor?.name === 'Alex'), 'detail event visible with actor');
+const detEv = r.data.events.find((e) => e.detail.includes('Ace serve'));
+check(detEv?.kind === 'serve' && detEv?.playerIdx === 1, 'detail event carries structured kind + player side');
+// legacy clients without key still get the label->kind fallback
+r = await req(`/api/matches/${ovId}/action`, { method: 'POST', cookie: c1, body: { action: { type: 'detail', detail: 'Smash' } } });
+r = await req(`/api/matches/${ovId}`);
+const legacyEv = r.data.events.find((e) => e.detail.includes('Smash'));
+check(legacyEv?.kind === 'smash', 'label-to-kind fallback for detail events without a key');
 
 // 7. score points
 r = await req(`/api/matches/${mid}/action`, { method: 'POST', cookie: c1, body: { action: { type: 'point', player: 0 } } });
@@ -321,7 +328,7 @@ r = await req(`/api/users/${alexId}`);
 check(r.data.stats.total.played === 1, 'finished match counts in stats');
 const tt = r.data.stats.bySport['tabletennis'];
 check(tt && tt.wins >= 1, `Alex has a tabletennis win (${tt?.wins})`);
-r = await req('/api/matches?limit=100');
+r = await req('/api/matches?status=finished&limit=100');
 check(r.data.matches.find((m) => m.id === ttId)?.status === 'finished', 'feed shows finished match');
 
 // ---- 9. Tournaments: creation, draw, linked matches, champion ----------------

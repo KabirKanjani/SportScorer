@@ -71,6 +71,12 @@ button { font-family: inherit; }
 .btn.small { padding: 5px 12px; font-size: 13px; border-radius: 10px; }
 .btn:disabled { opacity: .6; cursor: not-allowed; }
 
+/* Navbar auth actions: full-height pill buttons, clearly clickable */
+.nav-auth .btn { min-height: 40px; padding: 8px 18px; border-radius: 999px; font-weight: 700; font-size: 14px; box-shadow: 0 1px 2px rgba(16,24,40,.06); }
+.nav-auth .btn.ghost { background: var(--card-2); border: 1px solid var(--line); color: var(--text); }
+.nav-auth .btn.ghost:hover { border-color: var(--accent); color: var(--accent); filter: none; }
+.nav-auth .btn.primary { background: var(--accent); border: 1px solid var(--accent); color: #fff; }
+
 /* ---------- Forms ---------- */
 .auth-page { display: flex; justify-content: center; padding-top: 40px; }
 .auth-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 14px; }
@@ -563,6 +569,30 @@ button { font-family: inherit; }
   margin-left: 9px; color: #ffd166; font-weight: 700; }
 .scoreline-table tr.winning .sl-name { color: #ffd166; }
 .sl-caption { margin-top: 8px; font-size: 12px; color: #8fa3c8; letter-spacing: .4px; }
+
+/* Match report (finished) */
+.report { background: linear-gradient(135deg, #0f1b38, #1e3a8a); color: #fff; }
+.report-head { display: flex; align-items: center; gap: 16px; }
+.report-trophy { font-size: 42px; line-height: 1; }
+.report-title h2 { margin: 0 0 4px; color: #8fa3c8; }
+.report-winner { font-size: 20px; }
+.report-winner b { color: #ffd166; }
+.report-score { font-family: 'Oswald', sans-serif; font-size: 26px; color: #fff; letter-spacing: .5px; }
+.report-stats { margin-top: 16px; display: flex; flex-direction: column; gap: 10px;
+  border-top: 1px dashed rgba(255,255,255,.2); padding-top: 14px; }
+.report-player-stats { display: flex; flex-direction: column; gap: 4px; }
+.report-player-name { font-size: 13px; color: #a8c1f0; display: flex; gap: 8px; align-items: center; }
+.report-player-name em { font-style: normal; font-size: 11px; color: #ffd166; text-transform: uppercase; letter-spacing: 1px; }
+.report-stat-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.report-stat { background: rgba(255,255,255,.1); border-radius: 20px; padding: 4px 12px; font-size: 13px; }
+.report-stat b { color: #ffd166; }
+.report-facts { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 14px;
+  color: #a8c1f0; font-size: 13px; }
+.report-facts .muted { color: #8fa3c8; }
+.report-share { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.report-share .btn.primary { background: var(--accent); color: #fff; }
+.report-share .btn.ghost { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.25); color: #fff; }
+.report-share .btn.ghost:hover { border-color: #ffd166; color: #ffd166; }
 
 /* Pre-match card */
 .pregame { border-color: #a8c1f0; }

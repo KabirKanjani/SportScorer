@@ -272,7 +272,13 @@ export async function processMatchAction(matchId, action, user, broadcast = () =
       addEvent(matchId, '⇄ Sides swapped', user.id);
     } else if (action.type === 'detail') {
       const detail = String(action.detail || '').trim();
-      if (detail) addEvent(matchId, `↳ ${detail}`, user.id);
+      if (detail) {
+        const opts = SPORTS[next.sport]?.pointDetails || [];
+        const known = opts.find((d) => d.label === detail);
+        const kind = String(action.key ?? known?.key ?? '').trim().slice(0, 20) || null;
+        const pi = action.player === 0 || action.player === 1 ? action.player : null;
+        addEvent(matchId, `↳ ${detail}`, user.id, { kind, playerIdx: pi });
+      }
     } else if (action.type === 'server') {
       addEvent(matchId, `🎾 ${next.playerNames[action.player]} will serve first`, user.id);
     }

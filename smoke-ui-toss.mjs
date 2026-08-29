@@ -148,6 +148,31 @@ check(nowCell[0] === '0' && nowCell[1] === '0', 'now column shows per-player set
 const caption = await page.evaluate(() => document.querySelector('.sl-caption')?.textContent || '');
 check(/set 1/.test(caption) && /game 15-15/.test(caption) && caption.includes('Aria'), 'scoreline caption stays in sync with the live points: ' + caption.trim());
 
+// 7. Finish the match via API (Aria wins 6-0), then the report renders with
+//    structured tallies + share actions.
+for (let i = 0; i < 24; i++) {
+  await api(`/api/matches/${mid}/action`, { method: 'POST', cookie: cA, body: { action: { type: 'point', player: 0 } } });
+}
+await api(`/api/matches/${mid}/action`, { method: 'POST', cookie: cA, body: { action: { type: 'detail', detail: 'Ace', key: 'ace', player: 0 } } });
+await api(`/api/matches/${mid}/action`, { method: 'POST', cookie: cA, body: { action: { type: 'detail', detail: 'Winner', key: 'winner', player: 0 } } });
+await api(`/api/matches/${mid}/action`, { method: 'POST', cookie: cA, body: { action: { type: 'detail', detail: 'Double fault', key: 'doublefault', player: 1 } } });
+await page.goto(BASE + `/match/${mid}`, { waitUntil: 'networkidle0', timeout: 25000 });
+await sleep(900);
+const report = await page.evaluate(() => ({
+  present: !!document.querySelector('.report'),
+  winner: document.querySelector('.report-winner')?.textContent || '',
+  score: document.querySelector('.report-score')?.textContent || '',
+  stats: [...document.querySelectorAll('.report-player-stats')].map((p) => p.textContent.replace(/\s+/g, ' ').trim()),
+  shareBtns: [...document.querySelectorAll('.report-share .btn')].map((b) => b.textContent.trim()),
+  finished: document.querySelector('.done-pill')?.textContent || '',
+}));
+check(report.present && /Finished/.test(report.finished), 'match finished and the report panel is shown');
+check(/Aria beats Blake/.test(report.winner), 'report crowns the winner: ' + report.winner);
+check(/6-0/.test(report.score), 'report shows the final scoreline: ' + report.score);
+check(report.stats.some((s) => /Aria/.test(s) && /1 Aces/.test(s) && /1 Winners/.test(s)), 'report tallies structured point stats: ' + JSON.stringify(report.stats));
+check(report.stats.some((s) => /Blake/.test(s) && /1 Double faults/.test(s)), 'report tallies the opponent side too: ' + JSON.stringify(report.stats));
+check(report.shareBtns.some((b) => /Copy link/.test(b)) && report.shareBtns.some((b) => /WhatsApp/.test(b)), 'copy-link + WhatsApp share actions present: ' + JSON.stringify(report.shareBtns));
+
 console.log('\nruntime errors:', errors.length);
 for (const e of errors.slice(0, 10)) console.log('  ' + e);
 await browser.close();

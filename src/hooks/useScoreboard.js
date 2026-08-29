@@ -79,7 +79,10 @@ export function useScoreboard(matchId) {
   const doUndo = useCallback(() => sendCommand({ type: 'undo' }), [sendCommand]);
   const doReset = useCallback(() => sendCommand({ type: 'reset' }), [sendCommand]);
   const doSwap = useCallback(() => sendCommand({ type: 'swap' }), [sendCommand]);
-  const recordDetail = useCallback((detail) => sendCommand({ type: 'detail', detail }), [sendCommand]);
+  const recordDetail = useCallback(
+    ({ detail, key, player }) => sendCommand({ type: 'detail', detail, key, player }),
+    [sendCommand]
+  );
   const startMatch = useCallback(async () => {
     await api(`/api/matches/${matchRef.current}/start`, { method: 'POST' });
   }, []);
