@@ -33,10 +33,52 @@ export default function Landing() {
             Browse live matches
           </Link>
         </div>
+
+        <div className="hero-preview" aria-hidden="true">
+          <div className="scoreline hero-demo">
+            <div className="scoreline-board">
+              <table className="scoreline-table">
+                <thead>
+                  <tr>
+                    <th className="sl-player">sets</th>
+                    <th className="sl-col">S1</th>
+                    <th className="sl-col">S2</th>
+                    <th className="sl-col now">now</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="sl-player">
+                      <span className="sl-name">Alex</span>
+                      <b className="sl-count">1</b>
+                    </td>
+                    <td className="sl-col">6</td>
+                    <td className="sl-col tb">4<sup>2</sup></td>
+                    <td className="sl-col now">3</td>
+                  </tr>
+                  <tr>
+                    <td className="sl-player">
+                      <span className="sl-name">Morgan</span>
+                      <b className="sl-count">0</b>
+                    </td>
+                    <td className="sl-col">3</td>
+                    <td className="sl-col tb">6<sup>7</sup></td>
+                    <td className="sl-col now">0</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div className="sl-caption">Alex · set 3 3-0 · game 15-0 · Third set, Alex up a break 🎾</div>
+            </div>
+          </div>
+          <div className="hero-live-badge">
+            <span className="live-pill">● LIVE</span> broadcasting right now
+          </div>
+        </div>
+
         <div className="hero-feats">
-          <span>📱 Live point-by-point scoring</span>
-          <span>👥 Follow friends &amp; their matches</span>
-          <span>📈 Personal stats &amp; history</span>
+          <span>📱 <b>Live point-by-point</b> scoring</span>
+          <span>👥 <b>Follow friends</b> &amp; their matches</span>
+          <span>📈 <b>Personal stats</b> &amp; history</span>
         </div>
       </section>
 
