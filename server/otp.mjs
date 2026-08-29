@@ -56,10 +56,28 @@ export async function issueOtp(email, purpose) {
   });
   const subject =
     purpose === 'login' ? 'Your SportScore login code' : 'Verify your SportScore email';
+  // Try to email the code, but never let a delivery failure block the flow:
+  // the code is returned in-band so registration/login still work end to end
+  // even when SMTP (Resend) is unavailable or unreachable.
+  let emailBlocked = false;
   if (!DEV_MODE) {
-    await sendEmail({ to: email, subject, html: otpEmailHtml(code, purpose) });
+    try {
+      const sent = await sendEmail({ to: email, subject, html: otpEmailHtml(code, purpose) });
+      if (!sent.id) {
+        // configuration without an API key: nothing was actually delivered
+        emailBlocked = true;
+        console.warn(`[otp] no email dispatched for ${email} (no delivery id)`);
+      }
+    } catch (e) {
+      emailBlocked = true;
+      console.error(`[otp] email delivery failed for ${email}: ${e.message}`);
+    }
   }
-  return { ok: true, ...(DEV_MODE ? { devCode: code } : {}) };
+  return {
+    ok: true,
+    emailBlocked,
+    ...(DEV_MODE || emailBlocked ? { devCode: code } : {}),
+  };
 }
 
 // Verifies a code. On success deletes it (single-use) and returns the purpose.

@@ -10,6 +10,7 @@ export default function LoginOtp() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [devCode, setDevCode] = useState('');
+  const [blocked, setBlocked] = useState(false);
   const [sent, setSent] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -26,10 +27,13 @@ export default function LoginOtp() {
         body: { email, purpose: 'login' },
       });
       setDevCode(d.devCode || '');
+      setBlocked(!!d.emailBlocked);
       setMsg(
-        d.devCode
-          ? 'Code created (dev preview below).'
-          : 'We emailed you a login code. It expires in 10 minutes.'
+        d.emailBlocked
+          ? 'Email delivery is unavailable right now — use the code shown below.'
+          : d.devCode
+            ? 'Code created (dev preview below).'
+            : 'We emailed you a login code. It expires in 10 minutes.'
       );
       setSent(true);
     } catch (err) {
@@ -76,8 +80,12 @@ export default function LoginOtp() {
           </label>
           {devCode && (
             <div className="dev-banner">
-              <b>Dev code: {devCode}</b>
-              <span>No email sender configured yet — use this code to sign in.</span>
+              <b>{blocked ? 'Your code: ' : 'Dev code: '}{devCode}</b>
+              <span>
+                {blocked
+                  ? 'Email delivery is unavailable right now — this code signs you in.'
+                  : 'No email sender configured yet — use this code to sign in.'}
+              </span>
             </div>
           )}
           <button className="btn primary big" disabled={busy || sent}>

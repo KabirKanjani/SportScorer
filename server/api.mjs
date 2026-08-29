@@ -352,7 +352,7 @@ export function createApi({ broadcast }) {
     try {
       const out = await issueOtp(String(email).trim(), purpose);
       if (out.error) return res.status(out.code || 400).json({ error: out.error });
-      return res.json({ ok: true, ...(out.devCode ? { devCode: out.devCode } : {}) });
+      return res.json({ ok: true, ...(out.devCode ? { devCode: out.devCode, emailBlocked: out.emailBlocked } : {}) });
     } catch (e) {
       return res.status(502).json({ error: 'Could not send the email right now.' });
     }

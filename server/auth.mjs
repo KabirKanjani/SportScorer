@@ -121,18 +121,21 @@ export async function registerRoute(req, res) {
     emailVerified: 0,
     ...(username != null && String(username).trim() ? { username } : {}),
   });
+  // Always start a session: registration must work even if email delivery
+  // is blocked (the code comes back in-band via devCode).
   try {
     const sent = await issueOtp(clean, 'verify');
-    if (sent.error) throw new Error(sent.error);
+    if (sent.error) {
+      return res.status(sent.code || 400).json({ error: sent.error });
+    }
     return res.json({
       user: startSession(req, res, user),
       needsVerification: true,
-      ...(sent.devCode ? { devCode: sent.devCode } : {}),
+      ...(sent.devCode ? { devCode: sent.devCode, emailBlocked: sent.emailBlocked } : {}),
     });
-  } catch {
-    return res
-      .status(502)
-      .json({ error: 'Account created, but the verification email could not be sent.' });
+  } catch (e) {
+    console.error('register/otp failed:', e.message);
+    return res.status(502).json({ error: 'Could not register right now. Please try again.' });
   }
 }
 

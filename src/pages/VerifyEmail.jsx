@@ -15,6 +15,7 @@ export default function VerifyEmail() {
 
   const [code, setCode] = useState('');
   const [devCode, setDevCode] = useState(initialDev);
+  const [blocked, setBlocked] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -52,7 +53,14 @@ export default function VerifyEmail() {
         body: { email, purpose: 'verify' },
       });
       setDevCode(d.devCode || '');
-      setMsg(d.devCode ? 'New code sent (dev preview below).' : 'A new code was sent to your email.');
+      setBlocked(!!d.emailBlocked);
+      setMsg(
+        d.emailBlocked
+          ? 'Email delivery is unavailable right now — use the code shown below.'
+          : d.devCode
+            ? 'New code sent (dev preview below).'
+            : 'A new code was sent to your email.',
+      );
       setSent(true);
     } catch (err) {
       setError(err.message);
@@ -100,8 +108,12 @@ export default function VerifyEmail() {
 
         {devCode && (
           <div className="dev-banner">
-            <b>Dev code: {devCode}</b>
-            <span>No email sender configured yet — use this code to verify.</span>
+            <b>{blocked ? 'Your code: ' : 'Dev code: '}{devCode}</b>
+            <span>
+              {blocked
+                ? 'Email delivery is unavailable right now — this code verifies you.'
+                : 'No email sender configured yet — use this code to verify.'}
+            </span>
           </div>
         )}
         {msg && <div className="form-ok">{msg}</div>}
