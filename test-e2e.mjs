@@ -166,6 +166,10 @@ check(r.status === 409, 'scoring blocked before the match starts');
 r = await req(`/api/matches/${mid}/start`, { method: 'POST', cookie: strangerCookie });
 check(r.status === 403, 'stranger cannot start the match');
 r = await req(`/api/matches/${mid}/start`, { method: 'POST', cookie: c1 });
+check(r.status === 409, 'start is rejected before the toss (who serves first)');
+r = await req(`/api/matches/${mid}/toss`, { method: 'POST', cookie: c1, body: { serverFirst: 1 } });
+check(r.status === 200, 'toss set before start');
+r = await req(`/api/matches/${mid}/start`, { method: 'POST', cookie: c1 });
 check(r.status === 200, 'creator starts the match');
 r = await req(`/api/matches/${mid}`, { cookie: c1 });
 check(r.data.started === true && r.data.canStart === false, 'match is now live (started)');
@@ -179,7 +183,13 @@ r = await req('/api/matches', {
     sides: { a: [alexId], b: [sam.id] },
     games: 1, // first to 1 (best of 1 game)
     toss: { winner: 1, serverFirst: 1 },
-    preMatch: { venue: 'Boardwalk Hall', court: 'Competition hall', conditions: 'Humid', detailPrompt: true },
+    preMatch: {
+      venue: 'Boardwalk Hall',
+      court: 'Competition hall',
+      conditions: 'Humid',
+      detailPrompt: true,
+      place: { placeId: 'pl_bw_1', name: 'Boardwalk Tennis Club', address: '1 Boardwalk Ave', lat: 40.71, lng: -74.0 },
+    },
   },
 });
 check(r.status === 200, `create override match (${r.data?.error || r.data?.match?.id})`);
@@ -188,7 +198,15 @@ check(r.data.full?.preMatch?.venue === 'Boardwalk Hall', 'venue saved in pre_mat
 check(r.data.full?.preMatch?.conditions === 'Humid', 'conditions saved');
 check(r.data.full?.preMatch?.tossWinner === 1 && r.data.full?.preMatch?.serverFirst === 1, 'toss winner + server saved');
 check(r.data.full?.preMatch?.detailPrompt === true, 'point-detail preference saved');
+check(r.data.full?.preMatch?.place?.name === 'Boardwalk Tennis Club', 'real place (name) saved in pre_match');
+check(r.data.full?.preMatch?.place?.placeId === 'pl_bw_1' && r.data.full?.preMatch?.place?.lat === 40.71, 'place id + coords persisted');
 const ovState = r.data.full?.state;
+
+// places proxy degrades cleanly without a key
+r = await req('/api/places/search?q=central');
+check(r.status === 200 && r.data.configured === false && Array.isArray(r.data.results), 'places search degrades without a key');
+r = await req('/api/places/courts');
+check(r.status === 400, 'courts route requires coordinates');
 check(ovState?.gamesToWin === 1, 'games override (1) stored in state');
 r = await req('/api/matches', {
   method: 'POST',
@@ -294,6 +312,10 @@ r = await req('/api/matches', {
   body: { sport: 'tabletennis', sides: { a: [alexId], b: [sam.id] } },
 });
 const ttId = r.data.match.id;
+r = await req(`/api/matches/${ttId}/start`, { method: 'POST', cookie: c1 });
+check(r.status === 409, 'tabletennis match also needs the toss before start');
+r = await req(`/api/matches/${ttId}/toss`, { method: 'POST', cookie: c1, body: { serverFirst: 0 } });
+check(r.status === 200, 'toss set on the tabletennis match');
 r = await req(`/api/matches/${ttId}/start`, { method: 'POST', cookie: c1 });
 check(r.status === 200, 'tabletennis match started');
 for (let g = 0; g < 3; g++) {

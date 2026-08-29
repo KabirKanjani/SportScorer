@@ -220,7 +220,32 @@ export default function MatchPage() {
         <div className="panel pregame">
           <div className="panel-title">Pre-match</div>
           <div className="prematch-grid">
-            <div><span>Venue</span><b>{pre.preMatch?.venue || '—'}</b></div>
+            <div className="venue-cell">
+              <span>Venue</span>
+              {pre.preMatch?.place ? (
+                <>
+                  <b className="venue-name">📍 {pre.preMatch.place.name}</b>
+                  {pre.preMatch.place.address && (
+                    <span className="venue-addr">
+                      {pre.preMatch.place.address}{' '}
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                          Number.isFinite(pre.preMatch.place.lat)
+                            ? `${pre.preMatch.place.lat},${pre.preMatch.place.lng}`
+                            : `${pre.preMatch.place.name} ${pre.preMatch.place.address}`.trim()
+                        )}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        View map ↗
+                      </a>
+                    </span>
+                  )}
+                </>
+              ) : (
+                <b>{pre.preMatch?.venue || '—'}</b>
+              )}
+            </div>
             <div><span>Court / surface</span><b>{pre.preMatch?.court || '—'}</b></div>
             <div><span>Conditions</span><b>{pre.preMatch?.conditions || '—'}</b></div>
             <div><span>Format</span><b>{formatLabel(sb.meta?.sport, pre.preMatch?.format)}</b></div>
@@ -275,9 +300,20 @@ export default function MatchPage() {
           </div>
 
           {pre.canStart ? (
-            <button className="btn primary big" onClick={handleStart} disabled={starting}>
-              {starting ? 'Starting…' : 'Start the match 🎾'}
-            </button>
+            <>
+              <button
+                className="btn primary big"
+                onClick={handleStart}
+                disabled={starting || serverFirst == null}
+              >
+                {starting ? 'Starting…' : 'Start the match 🎾'}
+              </button>
+              {serverFirst == null && (
+                <p className="muted small gate-note">
+                  🪙 Do the coin toss first — choose who serves first to start.
+                </p>
+              )}
+            </>
           ) : (
             <p className="muted small gate-note">
               🔒 Scoring is locked until the match creator presses <b>Start</b>.

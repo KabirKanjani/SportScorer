@@ -92,12 +92,14 @@ export default function Login() {
           </span>
         </label>
 
-        {noPassword && (
+        {noPassword ? (
           <div className="form-hint">
-            This account has no password. You can sign in with a login code instead:
+            This account has no password — sign in with Google or a{' '}
+            <Link to="/login-otp">login code</Link> instead.
           </div>
+        ) : (
+          error && <div className="form-error">{error}</div>
         )}
-        {error && <div className="form-error">{error}</div>}
         <button className="btn primary big" disabled={busy}>
           {busy ? 'Logging in…' : 'Log in'}
         </button>

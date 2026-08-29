@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SPORTS, SPORT_IDS } from '../lib/sports.js';
 import { api } from '../api.js';
@@ -78,6 +78,132 @@ function PlayerPicker({ label, value, onChange }) {
   );
 }
 
+// Real-place picker: Google Places autocomplete + "nearby courts" geolocation,
+// served through the server-side proxy. Falls back to free text with no key.
+function VenueField({ text, onText, place, onPlace, sportName }) {
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState([]);
+  const [nearby, setNearby] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [configured, setConfigured] = useState(null);
+  const [err, setErr] = useState('');
+  const timer = useRef();
+
+  useEffect(() => {
+    let alive = true;
+    api('/api/places/config')
+      .then((d) => alive && setConfigured(!!d.configured))
+      .catch(() => alive && setConfigured(false));
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    clearTimeout(timer.current);
+    if (configured !== true || !text.trim() || place) {
+      setResults([]);
+      return;
+    }
+    setLoading(true);
+    timer.current = setTimeout(() => {
+      api(`/api/places/search?q=${encodeURIComponent(text.trim())}`)
+        .then((d) => setResults(d.results || []))
+        .catch((e) => setErr(e.message))
+        .finally(() => setLoading(false));
+    }, 300);
+    return () => clearTimeout(timer.current);
+  }, [text, configured, place]);
+
+  async function pick(p) {
+    setOpen(false);
+    setNearby([]);
+    let chosen = p;
+    if (!Number.isFinite(p.lat) && p.placeId) {
+      try {
+        const d = await api(`/api/places/place?placeId=${encodeURIComponent(p.placeId)}`);
+        if (d.place) chosen = d.place;
+      } catch { /* keep the lightweight prediction */ }
+    }
+    onPlace(chosen);
+    onText(chosen.name);
+  }
+
+  async function findNearby() {
+    if (!navigator.geolocation) {
+      setErr('This browser has no location support — type a venue instead.');
+      return;
+    }
+    setLocating(true);
+    setErr('');
+    try {
+      const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej));
+      const d = await api(
+        `/api/places/courts?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}&q=${encodeURIComponent(`${sportName} court`)}`
+      );
+      setNearby(d.results || []);
+      setOpen(true);
+      if (!d.results?.length) setErr(d.error || `No ${sportName} courts found nearby — try typing one.`);
+    } catch (e) {
+      setErr(
+        e?.code === 1
+          ? 'Location permission denied — type a venue instead.'
+          : 'Could not get your location — type a venue instead.'
+      );
+    } finally {
+      setLocating(false);
+    }
+  }
+
+  const suggestions = place ? [] : open && configured ? [...results, ...nearby] : [];
+
+  return (
+    <div className="venue-field">
+      <div className="venue-row">
+        <input
+          value={text}
+          onChange={(e) => {
+            if (place) onPlace(null);
+            onText(e.target.value);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder={place ? place.name : 'e.g. Wimbledon · Centre Court'}
+          maxLength={80}
+        />
+        {place ? (
+          <button type="button" className="pick-clear" onClick={() => { onPlace(null); onText(''); }} aria-label="remove place">
+            ✕
+          </button>
+        ) : configured ? (
+          <button type="button" className="btn ghost" onClick={findNearby} disabled={locating}>
+            📍 {locating ? 'Finding…' : 'Near me'}
+          </button>
+        ) : null}
+      </div>
+      {configured === true && !place && (
+        <p className="muted small venue-hint">Search real {sportName} courts &amp; venues.</p>
+      )}
+      {suggestions.length > 0 || loading ? (
+        <div className="picker-results place-results">
+          {loading && <div className="picker-empty">Searching…</div>}
+          {!loading &&
+            suggestions.map((s) => (
+              <button
+                key={s.placeId || `${s.name}-${s.address}`}
+                className="picker-result"
+                onMouseDown={() => pick(s)}
+              >
+                <span className="place-name">📍 {s.name}</span>
+                {s.address && <span className="place-addr">{s.address}</span>}
+              </button>
+            ))}
+        </div>
+      ) : null}
+      {err && <p className="muted small venue-hint err">{err}</p>}
+    </div>
+  );
+}
+
 export default function NewMatch() {
   const nav = useNavigate();
   const { user } = useAuth();
@@ -88,6 +214,7 @@ export default function NewMatch() {
   const [b2, setB2] = useState(null);
   const [doubles, setDoubles] = useState(false);
 const [venue, setVenue] = useState('');
+  const [place, setPlace] = useState(null);
   const [court, setCourt] = useState(null);
   const [conditions, setConditions] = useState('');
   const [pointDetail, setPointDetail] = useState(false);
@@ -128,10 +255,21 @@ const [venue, setVenue] = useState('');
           },
           ...(isSetsFamily ? { sets: target } : { games: target }),
           preMatch: {
-            venue: venue.trim() || null,
+            venue: place?.name || venue.trim() || null,
             court: court || null,
             conditions: conditions.trim() || null,
             detailPrompt: pointDetail,
+            ...(place
+              ? {
+                  place: {
+                    placeId: place.placeId || null,
+                    name: place.name,
+                    address: place.address || null,
+                    lat: Number.isFinite(place.lat) ? place.lat : null,
+                    lng: Number.isFinite(place.lng) ? place.lng : null,
+                  },
+                }
+              : {}),
           },
         },
       });
@@ -190,12 +328,13 @@ const [venue, setVenue] = useState('');
       <div className="panel">
         <div className="panel-title">Pre-match details</div>
         <div className="field">
-          <label>Venue / grounds</label>
-          <input
-            value={venue}
-            onChange={(e) => setVenue(e.target.value)}
-            placeholder="e.g. Wimbledon · Centre Court"
-            maxLength={80}
+          <label>Venue / place</label>
+          <VenueField
+            text={venue}
+            onText={setVenue}
+            place={place}
+            onPlace={setPlace}
+            sportName={SPORTS[sport].name}
           />
         </div>
         <div className="field">
