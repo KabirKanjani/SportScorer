@@ -9,7 +9,7 @@ import { getDisplay, describeDrama } from '../lib/engine.js';
 import { SPORTS } from '../lib/sports.js';
 import { api } from '../api.js';
 
-const DETAIL_FALLBACK = ['Winner', 'Unforced error', 'Ace', 'Other'];
+const DETAIL_FALLBACK = [{ label: 'Winner' }, { label: 'Unforced error' }, { label: 'Ace', only: 'server' }, { label: 'Other' }];
 const ROLE_ICONS = { Creator: '⚑', Player: '🎾', Scorer: '✍' };
 
 export default function MatchPage() {
@@ -96,7 +96,7 @@ export default function MatchPage() {
     }
     setBeat((bd) => ({ winner, tick: bd.tick + 1, gameWon, setWon, matchWon }));
     if (winner !== null) {
-      setPrompt((p) => ({ winner, tick: p.tick + 1 }));
+      setPrompt((p) => ({ winner, tick: p.tick + 1, servedBy: prev.serverIdx }));
     }
   }, [sb.state]);
 
@@ -314,6 +314,8 @@ export default function MatchPage() {
               display={display}
               meta={sb.meta}
               detailEnabled={detailEnabled}
+              detailWinnerIdx={prompt.winner}
+              detailServerIdx={prompt.servedBy}
               detailWinner={prompt.winner != null ? sideNames[prompt.winner] : null}
               detailPromptOn={detailEnabled && prompt.winner != null && prompt.tick > 0}
               detailOptions={details}

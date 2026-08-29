@@ -20,7 +20,16 @@ export const SPORTS = {
     set: { gamesToWin: 6, winBy: 2, tiebreakAt: 6 }, // tiebreak at 6-6
     tennis: { noAd: false },
     serve: 'game',
-    pointDetails: ['Ace', 'Double fault', 'Winner', 'Unforced error', 'Forced error', 'Drop shot', 'Net point', 'Other'],
+    pointDetails: [
+      { label: 'Ace', only: 'server' },
+      { label: 'Double fault', only: 'receiver' },
+      { label: 'Winner' },
+      { label: 'Unforced error' },
+      { label: 'Forced error' },
+      { label: 'Drop shot' },
+      { label: 'Net point' },
+      { label: 'Other' },
+    ],
     courtOptions: ['Hard court', 'Clay court', 'Grass court', 'Carpet court'],
     description: 'Best of 3 sets · 6 games each, win by 2 · tiebreak at 6-6',
     court: {
@@ -42,7 +51,16 @@ export const SPORTS = {
     set: { gamesToWin: 6, winBy: 2, tiebreakAt: 6 },
     tennis: { noAd: false },
     serve: 'game',
-    pointDetails: ['Ace', 'Double fault', 'Winner', 'Unforced error', 'Forced error', 'Bandeja', 'Vibora', 'Other'],
+    pointDetails: [
+      { label: 'Ace', only: 'server' },
+      { label: 'Double fault', only: 'receiver' },
+      { label: 'Winner' },
+      { label: 'Unforced error' },
+      { label: 'Forced error' },
+      { label: 'Bandeja' },
+      { label: 'Vibora' },
+      { label: 'Other' },
+    ],
     courtOptions: ['Glass indoor padel', 'Outdoor padel', 'Artificial grass'],
     description: 'Best of 3 sets · 6 games each, win by 2 · tiebreak at 6-6',
     court: {
@@ -64,7 +82,14 @@ export const SPORTS = {
     game: { target: 11, winBy: 2 },
     scoring: 'rally',
     serve: 'lastWinner',
-    pointDetails: ['Ace', 'Unforced error', 'Winner', 'Let / stroke', 'Tin error', 'Other'],
+    pointDetails: [
+      { label: 'Ace', only: 'server' },
+      { label: 'Unforced error' },
+      { label: 'Winner' },
+      { label: 'Let / stroke' },
+      { label: 'Tin error' },
+      { label: 'Other' },
+    ],
     courtOptions: ['Glass court', 'Full-height front wall'],
     description: 'Best of 5 games · first to 11, win by 2 (PAR scoring)',
     court: {
@@ -86,7 +111,14 @@ export const SPORTS = {
     game: { target: 15, winBy: 2 },
     scoring: 'rally',
     serve: 'lastWinner',
-    pointDetails: ['Ace', 'Unforced error', 'Winner', 'Skip / tin', 'Let', 'Other'],
+    pointDetails: [
+      { label: 'Ace', only: 'server' },
+      { label: 'Unforced error' },
+      { label: 'Winner' },
+      { label: 'Skip / tin' },
+      { label: 'Let' },
+      { label: 'Other' },
+    ],
     courtOptions: ['Standard four-wall'],
     description: 'Best of 5 games · first to 15, win by 2',
     court: {
@@ -108,7 +140,15 @@ export const SPORTS = {
     game: { target: 11, winBy: 2 },
     scoring: 'sideout', // only serving side scores
     serve: 'sideout',
-    pointDetails: ['Serve ace', 'Unforced error', 'Winner', 'Dink error', 'Net / kitchen fault', 'Erne', 'Other'],
+    pointDetails: [
+      { label: 'Serve ace', only: 'server' },
+      { label: 'Unforced error' },
+      { label: 'Winner' },
+      { label: 'Dink error' },
+      { label: 'Net / kitchen fault' },
+      { label: 'Erne' },
+      { label: 'Other' },
+    ],
     courtOptions: ['Outdoor', 'Indoor'],
     description: 'Best of 3 games · first to 11, win by 2 · side-out scoring',
     court: {
@@ -130,7 +170,14 @@ export const SPORTS = {
     game: { target: 11, winBy: 2 },
     scoring: 'rally',
     serve: 'switch2',
-    pointDetails: ['Serve ace', 'Winner', 'Net edge', 'Block', 'Push error', 'Other'],
+    pointDetails: [
+      { label: 'Serve ace', only: 'server' },
+      { label: 'Winner' },
+      { label: 'Net edge' },
+      { label: 'Block' },
+      { label: 'Push error' },
+      { label: 'Other' },
+    ],
     courtOptions: ['Competition table', 'Home table'],
     description: 'Best of 5 games · first to 11, win by 2 · serve every 2 points',
     court: {
@@ -152,7 +199,16 @@ export const SPORTS = {
     game: { target: 21, winBy: 2 },
     scoring: 'rally',
     serve: 'switch2',
-    pointDetails: ['Ace serve', 'Unforced error', 'Winner', 'Netkill', 'Lift error', 'Smash', 'Fault', 'Other'],
+    pointDetails: [
+      { label: 'Ace serve', only: 'server' },
+      { label: 'Unforced error' },
+      { label: 'Winner' },
+      { label: 'Netkill' },
+      { label: 'Lift error' },
+      { label: 'Smash' },
+      { label: 'Fault' },
+      { label: 'Other' },
+    ],
     courtOptions: ['Competition hall', 'Club hall'],
     description: 'Best of 3 games · first to 21, win by 2 · serve every 2 points',
     court: {

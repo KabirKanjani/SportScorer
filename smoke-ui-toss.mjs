@@ -98,6 +98,7 @@ check(rows[0].split('|').pop().trim() === '0-0', 'scoreline live column shows 0-
 // 4. Score a point -> detail prompt appears directly under the point buttons.
 const pointBtns = await page.$$('.point-btn');
 check(pointBtns.length === 2, 'Controls show two point buttons');
+// first point: Aria (receiver, since Blake serves first) wins -> no Ace, but Double fault
 await pointBtns[0].click();
 await sleep(900);
 const promptHead = await page.evaluate(() => document.querySelector('.point-detail-head')?.textContent || '');
@@ -121,16 +122,27 @@ check(promptPlacement.inScorePanel, 'prompt lives inside the Score panel');
 check(promptPlacement.afterButtons, 'prompt is directly below the point buttons');
 check(promptPlacement.beforeActions, 'prompt sits above the Actions panel');
 
-// 5. Pick a detail chip -> disappears and lands in the timeline.
-const chips = await page.$$('.point-detail-chips .chip');
-check(chips.length >= 6, 'detail chips shown (' + chips.length + ')');
-const chipText = await page.evaluate(() => document.querySelector('.point-detail-chips .chip')?.textContent.trim() || '');
-await chips[0].click();
+// 5. Context validation: receiver wins -> Ace hidden, Double fault shown.
+let chipLabels = await page.$$eval('.point-detail-chips .chip', (els) => els.map((e) => e.textContent.trim()));
+check(!chipLabels.includes('Ace'), 'Ace not offered when the receiver wins: ' + JSON.stringify(chipLabels));
+check(chipLabels.includes('Double fault') && chipLabels[0] === 'Double fault', 'Double fault offered (and first) when the receiver wins');
+await (await page.$('.point-detail-chips .chip')).click();
 await sleep(700);
 const promptGone = await page.evaluate(() => !document.querySelector('.point-detail'));
 check(promptGone, 'prompt dismissed after pick');
-const timeline = await page.$$eval('.event-row .event-detail', (els) => els.map((e) => e.textContent).join(' '));
-check(timeline.includes(chipText), 'picked detail recorded to the timeline: "' + chipText + '"');
+let timeline = await page.$$eval('.event-row .event-detail', (els) => els.map((e) => e.textContent).join(' '));
+check(timeline.includes('Double fault'), 'receiver win recorded as a Double fault: "' + timeline + '"');
+
+// 6. Server wins next point -> Ace shown, Double fault hidden.
+await (await page.$$('.point-btn'))[1].click();
+await sleep(900);
+chipLabels = await page.$$eval('.point-detail-chips .chip', (els) => els.map((e) => e.textContent.trim()));
+check(chipLabels.includes('Ace') && chipLabels[0] === 'Ace', 'Ace offered (and first) when the server wins: ' + JSON.stringify(chipLabels));
+check(!chipLabels.includes('Double fault'), 'Double fault not offered when the server wins');
+await (await page.$('.point-detail-chips .chip')).click();
+await sleep(700);
+timeline = await page.$$eval('.event-row .event-detail', (els) => els.map((e) => e.textContent).join(' '));
+check(timeline.includes('Ace'), 'server win recorded as an Ace: "' + timeline + '"');
 const nowCell = await page.$$eval('.scoreline-table tbody tr td.sl-col.now', (els) => els.map((e) => e.textContent.trim()));
 check(nowCell[0] === '0-0', 'scoreline now column tracks the live set games: ' + JSON.stringify(nowCell));
 const caption = await page.evaluate(() => document.querySelector('.sl-caption')?.textContent || '');

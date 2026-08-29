@@ -6,12 +6,24 @@ export default function Controls({
   meta,
   detailEnabled,
   detailWinner,
+  detailWinnerIdx,
+  detailServerIdx,
   detailPromptOn,
   detailOptions = [],
   onRecordDetail,
   onDismissDetail,
 }) {
   const { playerNames, matchOver } = display;
+
+  // Ace needs the server to have won the point; a double fault hands it to the
+  // receiver — so only offer options that match who actually won the point.
+  const validOptions = detailOptions.filter((o) => {
+    if (!o.only) return true;
+    if (detailWinnerIdx == null || detailServerIdx == null) return false;
+    return o.only === 'server'
+      ? detailWinnerIdx === detailServerIdx
+      : detailWinnerIdx !== detailServerIdx;
+  });
 
   return (
     <div className="controls">
@@ -36,7 +48,7 @@ export default function Controls({
           </button>
         </div>
 
-        {detailEnabled && detailPromptOn && (
+        {detailEnabled && detailPromptOn && validOptions.length > 0 && (
           <div className="point-detail">
             <div className="point-detail-head">
               How did <b>{detailWinner}</b> win the point?
@@ -45,9 +57,9 @@ export default function Controls({
               </button>
             </div>
             <div className="point-detail-chips">
-              {detailOptions.map((d) => (
-                <button key={d} className="chip" onClick={() => onRecordDetail(d)}>
-                  {d}
+              {validOptions.map((o, i) => (
+                <button key={i} className="chip" onClick={() => onRecordDetail(o.label)}>
+                  {o.label}
                 </button>
               ))}
             </div>
