@@ -224,25 +224,6 @@ button { font-family: inherit; }
 .picker-result:hover { background: var(--card); }
 .picker-empty { padding: 12px; color: var(--muted); font-size: 13px; text-align: center; }
 
-/* ---------- Venue / place picker ---------- */
-.venue-field { position: relative; }
-.venue-row { display: flex; gap: 8px; }
-.venue-row input { flex: 1; background: var(--bg-soft); border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 11px 13px; font-size: 14px; }
-.venue-row input:focus { outline: 2px solid rgba(37,99,235,.35); border-color: var(--accent); }
-.venue-row .pick-clear { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 15px; padding: 0 4px; }
-.btn.ghost { background: var(--card); border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 0 12px; font-size: 13px; cursor: pointer; white-space: nowrap; }
-.btn.ghost:hover { border-color: var(--accent); color: var(--accent); }
-.venue-hint { margin: 6px 0 0; }
-.venue-hint.err { color: #dc2626; }
-.place-results { position: absolute; top: calc(100% + 6px); left: 0; right: 0; }
-.place-results .picker-result { flex-direction: column; align-items: flex-start; gap: 2px; }
-.place-name { font-weight: 600; }
-.place-addr { color: var(--muted); font-size: 12px; }
-.venue-cell .venue-name { font-size: 13px; }
-.venue-cell .venue-addr { color: var(--muted); font-size: 12px; font-weight: 400; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.venue-addr a { color: var(--accent); font-size: 12px; text-decoration: none; }
-.venue-addr a:hover { text-decoration: underline; }
-
 /* ---------- Dashboard / player ---------- */
 .dash-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .stats-strip { margin: 20px 0; }

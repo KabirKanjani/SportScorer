@@ -2,12 +2,6 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import {
-  searchPlaces,
-  nearbyCourts,
-  placeDetails,
-  PLACES_CONFIGURED,
-} from './places.mjs';
-import {
   createMatch,
   getMatch,
   listMatches,
@@ -575,18 +569,6 @@ export function createApi({ broadcast }) {
           : opts.gamesToWin || null,
     };
 
-    const pl = pre.place;
-    if (pl && typeof pl === 'object') {
-      const place = {
-        placeId: txt(pl.placeId, 120),
-        name: txt(pl.name, 120),
-        address: txt(pl.address, 160),
-        lat: Number.isFinite(Number(pl.lat)) ? Number(pl.lat) : null,
-        lng: Number.isFinite(Number(pl.lng)) ? Number(pl.lng) : null,
-      };
-      if (place.placeId || place.name) preMatch.place = place;
-    }
-
     const state = initialState(sport, [nameFor(sideA), nameFor(sideB)], opts);
     createMatch({ id, sport, state: stripHistory(state), createdBy: req.user.id, preMatch });
 
@@ -684,38 +666,6 @@ export function createApi({ broadcast }) {
     broadcast('feed');
     const full = getMatch(m.id);
     res.json({ ok: true, preMatch: full.preMatch, state: stripHistory(full.state) });
-  });
-
-  // Google Places proxy (server-side key). Autocomplete any venue type, then
-  // resolve the chosen place's details. With no API key these degrade to
-  // { configured:false } so the UI falls back to free text.
-  api.get('/places/search', async (req, res) => {
-    const out = await searchPlaces(String(req.query.q || ''));
-    if (out.error) return res.status(502).json({ error: out.error });
-    res.json({ configured: out.configured, results: out.results });
-  });
-
-  api.get('/places/courts', async (req, res) => {
-    const lat = Number(req.query.lat);
-    const lng = Number(req.query.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return res.status(400).json({ error: 'lat and lng are required' });
-    }
-    const out = await nearbyCourts(lat, lng, String(req.query.q || ''));
-    if (out.error) return res.status(502).json({ error: out.error });
-    res.json({ configured: out.configured, results: out.results });
-  });
-
-  api.get('/places/place', async (req, res) => {
-    const placeId = String(req.query.placeId || '');
-    if (!placeId) return res.status(400).json({ error: 'placeId is required' });
-    const out = await placeDetails(placeId);
-    if (out.error) return res.status(502).json({ error: out.error });
-    res.json({ configured: out.configured, place: out.place });
-  });
-
-  api.get('/places/config', (req, res) => {
-    res.json({ configured: PLACES_CONFIGURED });
   });
 
   // Invite an extra scorer (creator only). Scorers may operate the scoreboard.
