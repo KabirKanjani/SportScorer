@@ -93,7 +93,7 @@ const rows = await page.$$eval('.scoreline-table tbody tr', (trs) => trs.map((tr
   return tds.join(' | ');
 }));
 check(rows.length === 2 && rows[0].includes('Aria') && rows[1].includes('Blake'), 'scoreline has both player rows');
-check(rows[0].split('|').pop().trim() === '0-0', 'scoreline live column shows 0-0 pre-point: ' + rows[0]);
+check(rows[0].split('|').pop().trim() === '0' && rows[1].split('|').pop().trim() === '0', 'now column splits per player (0 / 0), not 0-0 twice: ' + JSON.stringify([rows[0].split('|').pop().trim(), rows[1].split('|').pop().trim()]));
 
 // 4. Score a point -> detail prompt appears directly under the point buttons.
 const pointBtns = await page.$$('.point-btn');
@@ -144,9 +144,9 @@ await sleep(700);
 timeline = await page.$$eval('.event-row .event-detail', (els) => els.map((e) => e.textContent).join(' '));
 check(timeline.includes('Ace'), 'server win recorded as an Ace: "' + timeline + '"');
 const nowCell = await page.$$eval('.scoreline-table tbody tr td.sl-col.now', (els) => els.map((e) => e.textContent.trim()));
-check(nowCell[0] === '0-0', 'scoreline now column tracks the live set games: ' + JSON.stringify(nowCell));
+check(nowCell[0] === '0' && nowCell[1] === '0', 'now column shows per-player set games (0/0): ' + JSON.stringify(nowCell));
 const caption = await page.evaluate(() => document.querySelector('.sl-caption')?.textContent || '');
-check(/current set/.test(caption) && caption.includes('Aria'), 'scoreline caption names the live set: ' + caption.trim());
+check(/set 1/.test(caption) && /game 15-15/.test(caption) && caption.includes('Aria'), 'scoreline caption stays in sync with the live points: ' + caption.trim());
 
 console.log('\nruntime errors:', errors.length);
 for (const e of errors.slice(0, 10)) console.log('  ' + e);
