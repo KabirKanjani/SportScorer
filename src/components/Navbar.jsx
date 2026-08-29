@@ -21,6 +21,9 @@ export default function Navbar() {
           <NavLink to="/tournaments" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
             Tournaments
           </NavLink>
+          <NavLink to="/search" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+            Search
+          </NavLink>
           {user && (
             <>
               <NavLink to="/dashboard" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>

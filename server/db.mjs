@@ -78,7 +78,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS email_code (
     email      TEXT NOT NULL,
-    purpose    TEXT NOT NULL CHECK (purpose IN ('verify','login')),
+    purpose    TEXT NOT NULL CHECK (purpose IN ('verify','login','reset')),
     code_hash  TEXT NOT NULL,
     expires_at INTEGER NOT NULL,
     attempts   INTEGER NOT NULL DEFAULT 0,
@@ -136,7 +136,34 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_ev_match ON event(match_id);
   CREATE INDEX IF NOT EXISTS idx_session_user ON session(user_id);
   CREATE INDEX IF NOT EXISTS idx_fx_tournament ON fixture(tournament_id);
+
+  -- One-time password-reset grants: token hash -> user, short lived.
+  CREATE TABLE IF NOT EXISTS reset_token (
+    token_hash TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL
+  );
 `);
+
+// Databases created before 'reset' OTPs existed had a CHECK on email_code.purpose
+// that rejected them; SQLite can't alter a CHECK, so rebuild the table.
+{
+  const codeSql = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'email_code'`)
+    .get();
+  if (codeSql && !codeSql.sql.includes("'reset'")) {
+    db.exec(`DROP TABLE email_code`);
+    db.exec(`CREATE TABLE email_code (
+      email      TEXT NOT NULL,
+      purpose    TEXT NOT NULL CHECK (purpose IN ('verify','login','reset')),
+      code_hash  TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      attempts   INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (email, purpose)
+    );`);
+  }
+}
 
 // Migration for databases created before email verification existed.
 {
@@ -244,6 +271,33 @@ export function createUser({
 
 export function markEmailVerified(userId) {
   db.prepare(`UPDATE user SET email_verified = 1 WHERE id = ?`).run(userId);
+}
+
+export function setUserPassword(userId, passwordHash) {
+  db.prepare(`UPDATE user SET password_hash = ? WHERE id = ?`).run(
+    passwordHash,
+    userId
+  );
+}
+
+export function saveResetToken(tokenHash, userId, expiresAt) {
+  db.prepare(
+    `INSERT OR REPLACE INTO reset_token (token_hash, user_id, expires_at) VALUES (?, ?, ?)`
+  ).run(tokenHash, userId, expiresAt);
+}
+
+export function getResetToken(tokenHash) {
+  return db
+    .prepare(`SELECT user_id AS userId, expires_at AS expiresAt FROM reset_token WHERE token_hash = ?`)
+    .get(tokenHash);
+}
+
+export function deleteResetToken(tokenHash) {
+  db.prepare(`DELETE FROM reset_token WHERE token_hash = ?`).run(tokenHash);
+}
+
+export function clearExpiredResetTokens() {
+  db.prepare(`DELETE FROM reset_token WHERE expires_at < ?`).run(Date.now());
 }
 
 // Provider login: reuse an existing account by email (link) or create a new one.
@@ -731,6 +785,22 @@ export function listTournamentsForUser(userId) {
        ORDER BY t.created_at DESC`
     )
     .all(userId, userId);
+}
+
+// Name search over the tournaments the viewer is allowed to see.
+export function searchTournaments(q, userId, limit = 30) {
+  if (!q) return listTournamentsForUser(userId);
+  const like = `%${q}%`;
+  return db
+    .prepare(
+      `SELECT DISTINCT t.* FROM tournament t
+       WHERE (t.visibility = 'public'
+          OR t.creator_id = ?
+          OR EXISTS (SELECT 1 FROM tournament_player tp WHERE tp.tournament_id = t.id AND tp.user_id = ?))
+       AND t.name LIKE ?
+       ORDER BY t.created_at DESC LIMIT ?`
+    )
+    .all(userId, userId, like, limit);
 }
 
 export function getTournamentPlayers(tournamentId) {

@@ -347,6 +347,18 @@ const tId = r.data.tournament.id;
 check(r.data.tournament.players.length === 1 && r.data.tournament.players[0].name === 'Alex', 'creator auto-entered as player 1');
 check(r.data.tournament.canStart === false, 'creator cannot start with 1 player');
 
+// ---- 9a. Public search: players by name/username, tournaments by name ----
+r = await req('/api/users?q=priya');
+check(r.status === 200 && r.data.users.some((u) => u.name === 'Priya'), 'player search finds users by name');
+r = await req('/api/users?q=sam');
+check(r.data.users.length >= 1 && r.data.users[0].name === 'Sam', 'player search finds users by name');
+r = await req('/api/users?q=zzz-no-such-user-xyz');
+check(r.data.users.length === 0, 'player search returns none for a miss');
+r = await req('/api/tournaments?q=e2e%20c');
+check(r.data.tournaments.some((t) => t.id === tId && t.name === 'E2E Cup'), 'tournament search finds by name');
+r = await req('/api/tournaments?q=wimbledon-ish-miss');
+check(r.data.tournaments.length === 0, 'tournament search returns none for a miss');
+
 r = await req(`/api/tournaments/${tId}/participants`, { method: 'POST', cookie: c1, body: { usernames: [samU, priyaUser, 'no_such_user_xyz'] } });
 check(r.status === 200 && r.data.tournament.players.length === 3, 'creator adds players by username');
 check(r.data.invalid.length === 1, 'unknown username reported invalid');
@@ -469,6 +481,34 @@ r = await req('/api/users/' + r.data.user.id, { method: 'GET' });
 check(r.status === 200 && r.data.user && r.data.user.avatar === avFile, 'avatar shows on a player profile');
 r = await req('/api/me/avatar', { method: 'DELETE', cookie: tolC });
 check(r.status === 200 && r.data.user && r.data.user.avatar === null, 'user can remove their avatar');
+
+// ---- 9c. Password reset: OTP -> single-use token -> new password ----
+r = await req('/api/otp/send', { method: 'POST', body: { email: priyaEmail, purpose: 'reset' } });
+check(r.status === 200 && !!r.data.devCode, 'reset code issued for existing account (dev mode)');
+const resetCode = r.data.devCode;
+
+r = await req('/api/otp/send', { method: 'POST', body: { email: 'nobody@never.land', purpose: 'reset' } });
+check(r.status === 200, 'reset code send does not reveal whether an email exists');
+
+r = await req('/api/otp/verify', { method: 'POST', body: { email: priyaEmail, purpose: 'reset', code: '000000' } });
+check(r.status === 400, 'wrong reset code rejected');
+
+r = await req('/api/otp/verify', { method: 'POST', body: { email: priyaEmail, purpose: 'reset', code: resetCode } });
+check(r.status === 200 && !!r.data.resetToken && !r.setCookie, 'reset verify returns token, no session started');
+const resetToken = r.data.resetToken;
+
+r = await req('/api/auth/reset-password', { method: 'POST', body: { resetToken: 'garbage', newPassword: 'newpass1' } });
+check(r.status === 400, 'bogus reset token rejected');
+r = await req('/api/auth/reset-password', { method: 'POST', body: { resetToken, newPassword: '123' } });
+check(r.status === 400, 'short new password rejected');
+r = await req('/api/auth/reset-password', { method: 'POST', body: { resetToken, newPassword: 'newpass1' } });
+check(r.status === 200 && r.data.ok, 'password updated');
+r = await req('/api/auth/reset-password', { method: 'POST', body: { resetToken, newPassword: 'again' } });
+check(r.status === 400, 'token is single-use');
+r = await req('/api/login', { method: 'POST', body: { email: priyaEmail, password: 'secret3' } });
+check(r.status === 401, 'old password no longer works');
+r = await req('/api/login', { method: 'POST', body: { email: priyaEmail, password: 'newpass1' } });
+check(r.status === 200 && r.data.user.email === priyaEmail, 'new password logs in');
 
 console.log(failures === 0 ? '\nALL E2E TESTS PASSED âœ…' : `\n${failures} TEST(S) FAILED âŒ`);
 process.exit(failures === 0 ? 0 : 1);

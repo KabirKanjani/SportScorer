@@ -10,7 +10,7 @@
     "dev": "concurrently -k \"vite\" \"node server/server.mjs\"",
     "dev:front": "vite",
     "dev:server": "node server/server.mjs",
-    "build": "vite build",
+    "build": "vite build && node scripts/make-og-image.mjs",
     "cap:sync": "vite build && cap sync",
     "start": "node server/server.mjs",
     "seed": "node server/seed.mjs",

@@ -11,6 +11,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState(params.get('error') || '');
+  const resetDone = params.get('reset') === 'done';
   const [busy, setBusy] = useState(false);
   const [google, setGoogle] = useState(false);
   const noPassword = error.includes('No password');
@@ -100,6 +101,11 @@ export default function Login() {
         ) : (
           error && <div className="form-error">{error}</div>
         )}
+        {resetDone && (
+          <div className="form-hint">
+            All set — your password was updated. Log in with your new password.
+          </div>
+        )}
         <button className="btn primary big" disabled={busy}>
           {busy ? 'Logging in…' : 'Log in'}
         </button>
@@ -107,6 +113,7 @@ export default function Login() {
         <div className="auth-links">
           <Link to="/login-otp">Sign in with a code</Link>
           <Link to="/register">Create an account</Link>
+          <Link to="/reset-password">Forgot password?</Link>
         </div>
       </form>
     </div>

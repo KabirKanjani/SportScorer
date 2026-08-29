@@ -1,6 +1,6 @@
 // HTTP API routers for SportScore.
 import { Router } from 'express';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import {
   createMatch,
   getMatch,
@@ -34,6 +34,7 @@ import {
   createTournament,
   getTournamentById,
   listTournamentsForUser,
+  searchTournaments,
   getTournamentPlayers,
   addTournamentPlayer,
   isTournamentPlayer,
@@ -46,6 +47,11 @@ import {
   getFixtureByMatch,
   setFixtureMatch,
   resolveFixtureWinner,
+  setUserPassword,
+  saveResetToken,
+  getResetToken,
+  deleteResetToken,
+  clearExpiredResetTokens,
 } from './db.mjs';
 import { initialState, apply, getDisplay, stripHistory } from '../src/lib/engine.js';
 import { SPORTS } from '../src/lib/sports.js';
@@ -57,6 +63,7 @@ import {
   logoutRoute,
   meRoute,
   startSession,
+  hashPassword,
 } from './auth.mjs';
 import {
   issueOtp,
@@ -368,7 +375,39 @@ export function createApi({ broadcast }) {
     const { email, purpose, code } = req.body || {};
     const out = verifyOtp(email, purpose, code);
     if (out.error) return res.status(out.code || 400).json({ error: out.error });
+    if (purpose === 'reset') {
+      // Do not start a session: hand back a short-lived single-use grant that
+      // the password-change step must present. Ties OTP possession to the change.
+      const token = randomBytes(32).toString('hex');
+      const tokenHash = createHash('sha256').update(token).digest('hex');
+      clearExpiredResetTokens();
+      saveResetToken(tokenHash, out.user.id, Date.now() + 15 * 60 * 1000);
+      return res.json({ ok: true, resetToken: token });
+    }
     return res.json({ ok: true, user: startSession(req, res, out.user) });
+  });
+
+  // Finish a password reset. Requires the single-use token issued after a
+  // successful reset-purpose OTP verification.
+  api.post('/auth/reset-password', (req, res) => {
+    const { resetToken, newPassword } = req.body || {};
+    const token = String(resetToken || '');
+    const pw = String(newPassword || '');
+    if (!token || !pw) {
+      return res.status(400).json({ error: 'Your reset session has expired — please restart.' });
+    }
+    if (pw.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const row = getResetToken(tokenHash);
+    if (!row || Number(row.expiresAt) < Date.now()) {
+      if (row) deleteResetToken(tokenHash);
+      return res.status(400).json({ error: 'That reset link has expired. Request a new one.' });
+    }
+    deleteResetToken(tokenHash);
+    setUserPassword(row.userId, hashPassword(pw));
+    return res.json({ ok: true });
   });
 
   // Google Sign in
@@ -422,7 +461,8 @@ export function createApi({ broadcast }) {
   // Users / players
   api.get('/users', (req, res) => {
     const q = String(req.query.q || '').trim();
-    res.json({ users: searchUsers(q, 50) });
+    const limit = Math.min(Number(req.query.limit) || 24, 50);
+    res.json({ users: searchUsers(q, limit) });
   });
 
   api.get('/me/live', (req, res) => {
@@ -741,7 +781,9 @@ export function createApi({ broadcast }) {
 
   api.get('/tournaments', (req, res) => {
     const viewerId = req.user?.id ?? -1;
-    const tournaments = listTournamentsForUser(viewerId).map((t) =>
+    const q = String(req.query.q || '').trim();
+    const list = q ? searchTournaments(q, viewerId, 30) : listTournamentsForUser(viewerId);
+    const tournaments = list.map((t) =>
       summarizeTournament(getTournamentById(t.id), req.user)
     );
     res.json({ tournaments });

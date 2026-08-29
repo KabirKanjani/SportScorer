@@ -25,7 +25,7 @@ function hashCode(code) {
 }
 
 export function isOtpPurpose(v) {
-  return v === 'verify' || v === 'login';
+  return v === 'verify' || v === 'login' || v === 'reset';
 }
 
 export function nameFromEmail(email) {
@@ -55,7 +55,11 @@ export async function issueOtp(email, purpose) {
     expiresAt: Date.now() + OTP_EXPIRY_MS,
   });
   const subject =
-    purpose === 'login' ? 'Your SportScore login code' : 'Verify your SportScore email';
+    purpose === 'login'
+      ? 'Your SportScore login code'
+      : purpose === 'reset'
+        ? 'Reset your SportScore password'
+        : 'Verify your SportScore email';
   // Try to email the code, but never let a delivery failure block the flow:
   // the code is returned in-band so registration/login still work end to end
   // even when SMTP (Resend) is unavailable or unreachable.
@@ -112,6 +116,12 @@ export function verifyOtp(email, purpose, code) {
     const user = getUserByEmail(String(email));
     if (!user) return { error: 'No account found for that email.', code: 400 };
     markEmailVerified(user.id);
+    return { ok: true, user };
+  }
+
+  if (purpose === 'reset') {
+    const user = getUserByEmail(String(email));
+    if (!user) return { error: 'No account found for that email.', code: 400 };
     return { ok: true, user };
   }
 

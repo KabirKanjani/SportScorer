@@ -12,16 +12,21 @@ const FROM = process.env.EMAIL_FROM || 'SportScore <onboarding@resend.dev>';
 
 export function otpEmailHtml(code, purpose) {
   const headline =
-    purpose === 'login' ? 'Your login code' : 'Verify your email';
+    purpose === 'login'
+      ? 'Your login code'
+      : purpose === 'reset'
+        ? 'Your password reset code'
+        : 'Verify your email';
   return `<!DOCTYPE html>
 <html>
-<body style="font-family:Arial,sans-serif;background:#f4f7fb;margin:0;padding:24px">
-  <div style="max-width:420px;margin:auto;background:#fff;border-radius:12px;padding:28px">
-    <h2 style="margin-top:0">🎾 SportScore</h2>
-    <p>${headline}</p>
-    <div style="font-size:32px;letter-spacing:10px;font-weight:700;color:#0f766e;text-align:center;padding:16px 0">${code}</div>
-    <p style="color:#555">Enter this code in the app. It expires in 10 minutes and can only be used once.</p>
-    <p style="color:#999;font-size:12px">If you didn't request this, you can safely ignore this email.</p>
+<body style="font-family:Segoe UI,Arial,sans-serif;background:#0b1120;margin:0;padding:32px 16px">
+  <div style="max-width:440px;margin:auto;background:#ffffff;border-radius:16px;padding:32px">
+    <div style="font-size:26px;font-weight:800;background:linear-gradient(90deg,#2563eb,#7c3aed);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:4px">🎾 SportScore</div>
+    <h2 style="margin:12px 0 4px;color:#0f172a">${headline}</h2>
+    <p style="color:#475569;margin-top:8px">Enter this code to continue.</p>
+    <div style="font-size:34px;letter-spacing:10px;font-weight:800;color:#2563eb;text-align:center;padding:20px 0;border-radius:12px;background:#f1f5f9">${code}</div>
+    <p style="color:#64748b;font-size:14px">The code expires in 10 minutes and can only be used once.</p>
+    <p style="color:#94a3b8;font-size:12px;margin-bottom:0">If you didn't request this, you can safely ignore this email.</p>
   </div>
 </body>
 </html>`;
