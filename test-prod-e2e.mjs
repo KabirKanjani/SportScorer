@@ -43,16 +43,19 @@ r = await req('/api/matches', {
 });
 check(r.status === 200, 'match created on prod');
 const mid = r.data?.match?.id;
+r = await req(`/api/matches/${mid}/toss`, { method: 'POST', cookie, body: { serverFirst: 0 } });
+check(r.status === 200, 'coin toss recorded on prod');
 r = await req(`/api/matches/${mid}/start`, { method: 'POST', cookie });
 check(r.status === 200, 'creator starts the match');
 
 r = await req(`/api/matches/${mid}/action`, { method: 'POST', cookie, body: { action: { type: 'point', player: 0 } } });
 check(r.status === 200, 'point scored on prod');
-r = await req(`/api/matches/${mid}/action`, { method: 'POST', cookie, body: { action: { type: 'detail', detail: 'Winner' } } });
+r = await req(`/api/matches/${mid}/action`, { method: 'POST', cookie, body: { action: { type: 'detail', detail: 'Winner', key: 'winner', player: 0 } } });
 check(r.status === 200, 'point detail recorded on prod');
 r = await req(`/api/matches/${mid}`, { cookie });
 check(r.data?.match?.status === 'live', 'match is live on prod');
 check(r.data?.events?.some((e) => e.actor?.name === 'Prod E2E'), 'audit trail carries the actor');
+check(r.data?.events?.some((e) => e.kind === 'winner' && e.playerIdx === 0), 'detail event carries structured kind + side');
 
 r = await req('/api/matches?limit=5', { cookie });
 check(r.data?.matches?.some((m) => m.id === mid), 'live match appears in the feed');
