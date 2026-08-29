@@ -14,7 +14,19 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => {
-  if (m.type() === 'error') errors.push('console: ' + m.text().slice(0, 300));
+  if (m.type() !== 'error') return;
+  const text = m.text();
+  // Network failures are attributed via 'requestfailed' below; generic browser
+  // noise about resource loads is not a JS error.
+  if (/net::ERR_|Failed to load resource/.test(text)) return;
+  if (text.includes('js.sentry-cdn.com')) return; // third-party loader: soft dep
+  errors.push('console: ' + text.slice(0, 300));
+});
+page.on('requestfailed', (req) => {
+  // Sandbox browsers often can't reach external CDNs; benign for Sentry (lazy,
+  // soft dependency). Everything else is a real failure to note.
+  if (req.url().includes('js.sentry-cdn.com')) return;
+  errors.push(`request failed: ${req.failure()?.errorText || 'unknown'} ${req.url()}`);
 });
 page.on('response', (r) => {
   if (r.status() >= 400) errors.push(`http ${r.status()}: ${r.url()}`);

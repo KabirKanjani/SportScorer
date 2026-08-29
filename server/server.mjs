@@ -25,6 +25,21 @@ import { SPORTS } from '../src/lib/sports.js';
 import { sessionTokenFromRequest } from './auth.mjs';
 import { rateLimiter } from './rate-limit.mjs';
 import { backupDatabase } from '../backup.mjs';
+import { initSentry, Sentry } from './sentry.mjs';
+
+initSentry();
+
+// Never die silently: surface the crash to Sentry, then resume default behaviour.
+process.on('uncaughtException', (err) => {
+  Sentry.captureException(err, { tags: { source: 'uncaughtException' } });
+  console.error('[fatal]', err);
+});
+process.on('unhandledRejection', (reason) => {
+  Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason)), {
+    tags: { source: 'unhandledRejection' },
+  });
+  console.error('[fatal] unhandled rejection', reason);
+});
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const DIST_DIR = normalize(join(__dirname, '..', 'dist'));
@@ -245,9 +260,13 @@ app.use(async (req, res) => {
     }
     res.send(body);
   } catch (e) {
+    Sentry.captureException(e, { tags: { source: 'static' } });
     res.status(500).send('Server error');
   }
 });
+
+// Express error-handler glue: forward any thrown route errors to Sentry.
+Sentry.setupExpressErrorHandler(app);
 
 // ---------------------------------------------------------------------------
 // HTTP server + WebSocket upgrade
@@ -322,7 +341,8 @@ wss.on('connection', (ws, req) => {
     wsClients.delete(client);
   });
 
-  ws.on('error', () => {
+  ws.on('error', (err) => {
+    Sentry.captureException(err, { tags: { source: 'ws' } });
     wsClients.delete(client);
   });
 });

@@ -79,6 +79,7 @@ import {
   exchangeGoogleCode,
   BASE_URL,
 } from './google.mjs';
+import { sentryDsn } from './sentry.mjs';
 
 // ---- Avatar uploads ---------------------------------------------------------
 import { mkdirSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
@@ -413,6 +414,20 @@ export function createApi({ broadcast }) {
   // Google Sign in
   api.get('/auth/google/config', (_req, res) => {
     res.json({ available: googleConfigured() });
+  });
+
+  // Client-side error tracking config. The browser bundle is loaded by the
+  // Sentry loader script in index.html (which carries the public client key),
+  // so all this needs to supply is environment/release for grouping.
+  api.get('/sentry/config', (_req, res) => {
+    res.json({
+      enabled: !!sentryDsn || !!process.env.SENTRY_CLIENT_KEY,
+      environment: process.env.NODE_ENV === 'production' ? 'production' : 'development',
+      release:
+        process.env.RENDER_GIT_COMMIT
+          ? `sportscore@${String(process.env.RENDER_GIT_COMMIT).slice(0, 7)}`
+          : 'sportscore@dev',
+    });
   });
 
   // Guard against open redirects: only ever send the browser back to the web

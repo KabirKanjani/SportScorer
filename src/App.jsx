@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate, Link } from 'react-router-dom';
+import { Component } from 'react';
 import { useAuth } from './context/AuthContext.jsx';
 import Navbar from './components/Navbar.jsx';
 import Landing from './pages/Landing.jsx';
@@ -18,6 +19,39 @@ import Tournament from './pages/Tournament.jsx';
 import Search from './pages/Search.jsx';
 import Legal from './pages/Legal.jsx';
 
+function CrashFallback({ resetError }) {
+  return (
+    <div className="empty-state">
+      <h2>Something went wrong</h2>
+      <p>The page hit an unexpected error — it's been reported if monitoring is on.</p>
+      <button className="btn primary" onClick={resetError}>
+        Try again
+      </button>
+    </div>
+  );
+}
+
+// Render-time crash shield. Reports through the Sentry loader when present, so
+// a render error never blanks the whole app.
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    window.Sentry?.captureException(error, {
+      extra: { componentStack: info?.componentStack },
+    });
+  }
+  render() {
+    if (this.state.error) return <CrashFallback resetError={() => this.setState({ error: null })} />;
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const { user, loading } = useAuth();
 
@@ -33,7 +67,8 @@ export default function App() {
     <div className="app-wrap">
       <Navbar />
       <main className="page">
-        <Routes>
+        <ErrorBoundary>
+          <Routes>
           <Route path="/" element={user ? <Dashboard /> : <Landing />} />
           <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
           <Route path="/login-otp" element={user ? <Navigate to="/" replace /> : <LoginOtp />} />
@@ -52,7 +87,8 @@ export default function App() {
           <Route path="/privacy" element={<Legal kind="privacy" />} />
           <Route path="/terms" element={<Legal kind="terms" />} />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+          </Routes>
+        </ErrorBoundary>
       </main>
       <footer className="footer">
         <span>SportScore · real-time racquet sports scoring for friends 🎾🥒🏓</span>

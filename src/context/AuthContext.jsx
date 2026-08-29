@@ -14,6 +14,15 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
+  // Tag errors with the signed-in player when we know them (via Sentry loader).
+  useEffect(() => {
+    if (user) {
+      window.Sentry?.setUser({ id: String(user.id), email: user.email, username: user.username || undefined });
+    } else {
+      window.Sentry?.setUser(null);
+    }
+  }, [user]);
+
   const login = useCallback(async (email, password) => {
     const d = await api('/api/login', { method: 'POST', body: { email, password } });
     setUser(d.user);
