@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
-import { api } from '../api.js';
+import { api, API_BASE } from '../api.js';
 
 export default function Login() {
   const { login } = useAuth();
@@ -46,7 +46,13 @@ export default function Login() {
             <button
               type="button"
               className="btn google-btn big"
-              onClick={() => (window.location.href = '/api/auth/google')}
+              onClick={() => {
+                // Bundled app: the sign-in happens against the hosted backend and
+                // Safari returns to the app's own origin, where the session cookie
+                // (already stored) makes /api/me resolve the user.
+                const redirect = window.location.origin + window.location.pathname;
+                window.location.href = `${API_BASE}/api/auth/google?redirect=${encodeURIComponent(redirect)}`;
+              }}
             >
               <span className="google-icon">G</span> Continue with Google
             </button>

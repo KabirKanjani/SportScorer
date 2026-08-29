@@ -16,20 +16,23 @@ const REDIRECT_URI = `${BASE_URL}/api/auth/google/callback`;
 export const googleConfigured = () => !!(CLIENT_ID && CLIENT_SECRET);
 
 // Short-lived, single-use state tokens to prevent CSRF on the callback.
-const pendingStates = new Map(); // state -> expiresAt
+// Each entry also remembers where to send the browser afterwards, so a mobile
+// app can land back on its own origin (e.g. https://localhost) after sign-in.
+const pendingStates = new Map(); // state -> { expiresAt, redirect }
 const STATE_TTL = 10 * 60 * 1000;
 
-export function newOAuthState() {
+export function newOAuthState(redirect = '') {
   const state = randomBytes(24).toString('hex');
-  pendingStates.set(state, Date.now() + STATE_TTL);
+  pendingStates.set(state, { expiresAt: Date.now() + STATE_TTL, redirect });
   return state;
 }
 
+// Returns the redirect target, or null when the state is invalid/expired.
 export function consumeOAuthState(state) {
-  const expires = pendingStates.get(state);
-  if (!expires || Date.now() > expires) return false;
+  const rec = pendingStates.get(state);
+  if (!rec || Date.now() > rec.expiresAt) return null;
   pendingStates.delete(state);
-  return true;
+  return rec.redirect || '';
 }
 
 export function googleAuthUrl(state) {

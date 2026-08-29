@@ -11,13 +11,18 @@ import { SPORTS, tennisPointsDisplay } from './sports.js';
 //   tiebreak: bool,           // current set is a tiebreak (sets family)
 //   serverIdx: 0|1,           // current server
 //   serveCount: 0,            // points served by current server (for switch2)
+//   setsToWin: int|null,      // per-match override (best of N) — default = sport rule
+//   gamesToWin: int|null,     // per-match override for the points family
+//   completedSets: [{a,b,tb}],// finished sets (sets family) for the scoreline
+//   completedGames: [[a,b]],  // finished games (points family) for the scoreline
 //   history: [states...],     // previous states for undo
 //   matchOver: bool,
 //   winnerIdx: 0|1|null,
 //   finishedAt: Date string    // when match concluded (for celebrating)
 // }
 
-export function initialState(sport, playerNames = ['Player 1', 'Player 2']) {
+export function initialState(sport, playerNames = ['Player 1', 'Player 2'], opts = {}) {
+  const { setsToWin, gamesToWin, serverFirst } = opts || {};
   return {
     sport,
     started: false,
@@ -26,14 +31,23 @@ export function initialState(sport, playerNames = ['Player 1', 'Player 2']) {
     currentSetGames: [0, 0],
     gamePoints: [0, 0],
     tiebreak: false,
-    serverIdx: 0,
+    serverIdx: serverFirst === 1 ? 1 : 0,
     serveCount: 0,
+    setsToWin: setsToWin || null,
+    gamesToWin: gamesToWin || null,
+    completedSets: [],
+    completedGames: [],
     history: [],
     matchOver: false,
     winnerIdx: null,
     finishedAt: null,
   };
 }
+
+// Match-length rule, honoring any per-match override set at creation.
+const setsToWinOf = (s, sport) => (s.setsToWin != null ? s.setsToWin : sport.match.setsToWin);
+const gamesToWinOf = (s, sport) => (s.gamesToWin != null ? s.gamesToWin : sport.match.gamesToWin);
+export { setsToWinOf, gamesToWinOf };
 
 const MAX_HISTORY = 400; // undo steps kept (flat, no nested history)
 
@@ -46,6 +60,8 @@ function snapshot(state) {
     setWins: [...state.setWins],
     currentSetGames: [...state.currentSetGames],
     gamePoints: [...state.gamePoints],
+    completedSets: state.completedSets.slice(),
+    completedGames: state.completedGames.slice(),
     history: state.history.slice(0, MAX_HISTORY),
   };
 }
@@ -118,6 +134,8 @@ export function apply(state, action) {
       s.gamePoints = str(s.gamePoints);
       s.serverIdx = s.serverIdx === 0 ? 1 : 0;
       if (s.winnerIdx !== null) s.winnerIdx = s.winnerIdx === 0 ? 1 : 0;
+      s.completedSets = s.completedSets.map(({ a, b, tb }) => ({ a: b, b: a, tb })).reverse();
+      s.completedGames = s.completedGames.map(([a, b]) => [b, a]).reverse();
       return s;
     }
     default:
@@ -172,6 +190,7 @@ function completePointsGame(s, sport, idx) {
   const [a, b] = s.gamePoints;
   if ((a >= target && a - b >= winBy) || (b >= target && b - a >= winBy)) {
     // Game won by idx
+    s.completedGames.push([a, b]);
     s.setWins[idx] += 1;
     s.gamePoints = [0, 0];
     s.serveCount = 0;
@@ -182,7 +201,7 @@ function completePointsGame(s, sport, idx) {
       // reset serve to player 0 for next game (unimportant, controller decides)
       s.serverIdx = idx === 1 ? 1 : 0;
     }
-    if (s.setWins[idx] >= sport.match.gamesToWin) {
+    if (s.setWins[idx] >= gamesToWinOf(s, sport)) {
       finishMatch(s, idx);
     } else {
       s.started = true;
@@ -209,7 +228,12 @@ function completeTennisGame(s, sport) {
   } else {
     if ((a >= 7 && a - b >= 2) || (b >= 7 && b - a >= 2)) {
       const tbWinner = a > b ? 0 : 1;
-      // tiebreak winner takes the set; record as 7-6
+      // tiebreak winner takes the set; record scoreline as 7-6 (+tb flag)
+      s.completedSets.push({
+        a: tbWinner === 0 ? 7 : 6,
+        b: tbWinner === 1 ? 7 : 6,
+        tb: true,
+      });
       s.currentSetGames[tbWinner] = Math.max(s.currentSetGames[tbWinner], 6) + 1;
       s.setWins[tbWinner] += 1;
       s.tiebreak = false;
@@ -217,7 +241,7 @@ function completeTennisGame(s, sport) {
       s.gamePoints = [0, 0];
       s.serverIdx = tbWinner === 0 ? 1 : 0;
       s.serveCount = 0;
-      if (s.setWins[tbWinner] >= sport.match.setsToWin) {
+      if (s.setWins[tbWinner] >= setsToWinOf(s, sport)) {
         finishMatch(s, tbWinner);
       }
     }
@@ -232,10 +256,11 @@ function checkTennisSet(s, sport) {
 
   if ((gA >= gtw && gA - gB >= winBy) || (gB >= gtw && gB - gA >= winBy)) {
     const setWinner = gA > gB ? 0 : 1;
+    s.completedSets.push({ a: gA, b: gB, tb: false });
     s.setWins[setWinner] += 1;
     s.currentSetGames = [0, 0];
     s.gamePoints = [0, 0];
-    if (s.setWins[setWinner] >= sport.match.setsToWin) {
+    if (s.setWins[setWinner] >= setsToWinOf(s, sport)) {
       finishMatch(s, setWinner);
     }
   } else if (gA >= tbAt && gB >= tbAt) {
@@ -295,7 +320,7 @@ export function describeDrama(state) {
         ? true
         : setGames >= sport.set.gamesToWin && setGames - oppGames >= sport.set.winBy;
       if (setEnds) {
-        if (state.setWins[out.gamePoint] + 1 >= sport.match.setsToWin) out.matchPoint = out.gamePoint;
+        if (state.setWins[out.gamePoint] + 1 >= setsToWinOf(state, sport)) out.matchPoint = out.gamePoint;
         else out.setPoint = out.gamePoint;
       }
     }
@@ -308,7 +333,7 @@ export function describeDrama(state) {
         out.gamePoint = s;
       }
     }
-    if (out.gamePoint != null && state.setWins[out.gamePoint] + 1 >= sport.match.gamesToWin) {
+    if (out.gamePoint != null && state.setWins[out.gamePoint] + 1 >= gamesToWinOf(state, sport)) {
       out.matchPoint = out.gamePoint;
     }
   }
@@ -351,12 +376,18 @@ export function getDisplay(state) {
     out.gamesInSet = [null, null];
   }
 
-  // "game to X" label
+  // "game to X" label — honors per-match overrides
   if (sport.family === 'points') {
     out.targetLabel = `Game to ${sport.game.target}`;
+    out.matchLength = `First to ${gamesToWinOf(state, sport)} games`;
   } else {
     out.targetLabel = `Set to ${sport.set.gamesToWin}`;
+    out.matchLength = `Best of ${setsToWinOf(state, sport) * 2 - 1} sets`;
   }
+
+  // broadcast-style full scoreline (finished sets or games)
+  out.completedSets = state.completedSets;
+  out.completedGames = state.completedGames;
 
   return out;
 }

@@ -159,6 +159,16 @@ db.exec(`
   // migrate pre-existing tables, and SQLite forbids ADD COLUMN ... UNIQUE.
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_user_username ON user(username)');
 }
+
+// Pre-match data (toss, venue, court, conditions, "started" gate). Matches
+// created before this column existed have no gate (NULL -> treated as started).
+{
+  const mcols = db.prepare('PRAGMA table_info(match)').all();
+  if (!mcols.some((c) => c.name === 'pre_match')) {
+    db.exec('ALTER TABLE match ADD COLUMN pre_match TEXT');
+  }
+}
+
 // Migrations (forward-compat for databases created by older versions).
 {
   const ecols = db.prepare('PRAGMA table_info(event)').all();
@@ -400,12 +410,21 @@ export function countRecentCodes(email, minutes = 15) {
 
 // ---------------- Matches ----------------------------------------------------
 
-export function createMatch({ id, sport, state, createdBy }) {
+export function createMatch({ id, sport, state, createdBy, preMatch = null }) {
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO match (id, sport, status, state, created_by, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?)`
-  ).run(id, sport, 'live', JSON.stringify(state), createdBy, now, now);
+    `INSERT INTO match (id, sport, status, state, pre_match, created_by, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?)`
+  ).run(
+    id,
+    sport,
+    'live',
+    JSON.stringify(state),
+    preMatch ? JSON.stringify(preMatch) : null,
+    createdBy,
+    now,
+    now
+  );
   return id;
 }
 
@@ -464,6 +483,7 @@ function hydrateMatch(m) {
     createdAt: m.created_at,
     updatedAt: m.updated_at,
     finishedAt: m.finished_at,
+    preMatch: m.pre_match ? JSON.parse(m.pre_match) : null,
     players,
     scorers,
   };
@@ -558,6 +578,22 @@ export function isScorerOf(matchId, userId) {
   return !!db
     .prepare(`SELECT 1 FROM match_scorer WHERE match_id = ? AND user_id = ?`)
     .get(matchId, userId);
+}
+
+// Pre-match "started" gate. Matches predating the column default to started
+// so existing behaviour is preserved. Started is stored inside pre_match.
+export function matchStarted(matchId) {
+  const m = db.prepare(`SELECT pre_match FROM match WHERE id = ?`).get(matchId);
+  if (!m || !m.pre_match) return true;
+  const p = JSON.parse(m.pre_match);
+  return p.started === true;
+}
+
+export function setMatchStarted(matchId) {
+  const m = db.prepare(`SELECT pre_match FROM match WHERE id = ?`).get(matchId);
+  const p = m && m.pre_match ? JSON.parse(m.pre_match) : {};
+  p.started = true;
+  db.prepare(`UPDATE match SET pre_match = ? WHERE id = ?`).run(JSON.stringify(p), matchId);
 }
 
 // ---------------- Events -----------------------------------------------------

@@ -28,6 +28,8 @@ import {
   isCreatorOf,
   isScorerOf,
   addScorer,
+  matchStarted,
+  setMatchStarted,
   createTournament,
   getTournamentById,
   listTournamentsForUser,
@@ -155,6 +157,9 @@ export function matchSummary(m) {
     winnerNames:
       finished && display.winnerIdx !== null ? sides[display.winnerIdx] : null,
     tournament: summarizeTournamentRef(m.id),
+    preMatch: m.preMatch,
+    started: matchStarted(m.id),
+    createdBy: m.createdBy,
   };
 }
 
@@ -227,6 +232,14 @@ export async function processMatchAction(matchId, action, user, broadcast = () =
   const m = getMatch(matchId);
   if (!m) return { error: 'Match not found', code: 404 };
 
+  // Credibility gate: scoring stays locked until the creator starts the match.
+  if (!matchStarted(matchId) && action.type !== 'swap') {
+    return {
+      error: 'This match has not started yet — only the creator can start it.',
+      code: 409,
+    };
+  }
+
   return enqueue(matchId, () => {
     const before = fullStateOf(matchId);
     const next = runAction(before, action);
@@ -255,6 +268,9 @@ export async function processMatchAction(matchId, action, user, broadcast = () =
       addEvent(matchId, '⟲ New match', user.id);
     } else if (action.type === 'swap') {
       addEvent(matchId, '⇄ Sides swapped', user.id);
+    } else if (action.type === 'detail') {
+      const detail = String(action.detail || '').trim();
+      if (detail) addEvent(matchId, `↳ ${detail}`, user.id);
     }
     broadcast(`match:${matchId}`);
     broadcast('feed');
@@ -350,26 +366,42 @@ export function createApi({ broadcast }) {
     res.json({ available: googleConfigured() });
   });
 
+  // Guard against open redirects: only ever send the browser back to the web
+  // app's own origin, or to a bundled app origin (localhost / capacitor://).
+  function safeRedirect(value) {
+    if (!value) return '';
+    try {
+      const u = new URL(String(value));
+      if (u.hostname === 'localhost') return String(value);
+      if (u.host === new URL(BASE_URL).host) return String(value);
+    } catch {
+      /* malformed URL */
+    }
+    return '';
+  }
+
   api.get('/auth/google', (req, res) => {
     if (!googleConfigured()) {
       return res
         .status(503)
         .json({ error: 'Google sign-in is not configured on this server yet.' });
     }
-    const state = newOAuthState();
+    const redirect = safeRedirect(String(req.query.redirect || ''));
+    const state = newOAuthState(redirect);
     res.redirect(googleAuthUrl(state));
   });
 
   api.get('/auth/google/callback', async (req, res) => {
     const { code, state } = req.query || {};
-    if (!code || !state || !consumeOAuthState(String(state))) {
+    const redirect = consumeOAuthState(String(state));
+    if (!code || redirect === null) {
       return res.status(400).send('Invalid or expired sign-in request. Please try again.');
     }
     try {
       const { email, name, sub } = await exchangeGoogleCode(String(code));
       const { user } = findOrCreateOAuthUser({ provider: 'google', sub, email, name });
       startSession(req, res, user);
-      return res.redirect(BASE_URL + '/');
+      return res.redirect(redirect || `${BASE_URL}/`);
     } catch (e) {
       return res
         .status(400)
@@ -437,7 +469,8 @@ export function createApi({ broadcast }) {
 
   api.post('/matches', (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Not logged in' });
-    const { sport, sides } = req.body || {};
+    const body = req.body || {};
+    const { sport, sides } = body;
     if (!SPORTS[sport]) return res.status(400).json({ error: 'Unknown sport' });
     if (!sides || !Array.isArray(sides.a) || !Array.isArray(sides.b)) {
       return res.status(400).json({ error: 'Provide sides.a and sides.b arrays' });
@@ -472,13 +505,76 @@ export function createApi({ broadcast }) {
       users.length === 1 ? users[0].name : users.map((x) => x.name).join(' & ');
 
     const id = randomUUID();
-    const state = initialState(sport, [nameFor(sideA), nameFor(sideB)]);
-    createMatch({ id, sport, state: stripHistory(state), createdBy: req.user.id });
+
+    // Per-match format override (sets family = sets to win; points family =
+    // games to win). Optional — defaults to the sport's rule.
+    const cfg = SPORTS[sport];
+    const opts = {};
+    const sets = Number(body.sets);
+    const games = Number(body.games);
+    if (cfg.family === 'sets') {
+      if (!Number.isNaN(sets)) {
+        if (!Number.isInteger(sets) || sets < 1 || sets > 8) {
+          return res.status(400).json({ error: 'sets must be an integer from 1 to 8' });
+        }
+        opts.setsToWin = sets;
+      }
+    } else if (!Number.isNaN(games)) {
+      if (!Number.isInteger(games) || games < 1 || games > 15) {
+        return res.status(400).json({ error: 'games must be an integer from 1 to 15' });
+      }
+      opts.gamesToWin = games;
+    }
+
+    // Coin toss: toss.winner chooses who serves first (default: toss winner).
+    const toss = body.toss || {};
+    if (toss.winner != null) {
+      if (toss.winner !== 0 && toss.winner !== 1) {
+        return res.status(400).json({ error: 'toss.winner must be 0 or 1' });
+      }
+    }
+    let serverFirst = opts.serverFirst;
+    if (toss.serverFirst != null) {
+      if (toss.serverFirst !== 0 && toss.serverFirst !== 1) {
+        return res.status(400).json({ error: 'toss.serverFirst must be 0 or 1' });
+      }
+      serverFirst = toss.serverFirst;
+    } else if (toss.winner != null) {
+      serverFirst = toss.winner;
+    }
+    if (serverFirst != null) opts.serverFirst = serverFirst;
+
+    // Pre-match detailing: venue, court/surface, conditions (all optional).
+    const pre = body.preMatch || {};
+    const txt = (v, max) => {
+      if (v == null) return null;
+      const s = String(v).trim().slice(0, max);
+      return s || null;
+    };
+    const preMatch = {
+      started: false,
+      venue: txt(pre.venue, 80),
+      court: txt(pre.court, 60),
+      conditions: txt(pre.conditions, 160),
+      tossWinner: toss.winner != null ? toss.winner : null,
+      serverFirst: serverFirst != null ? serverFirst : null,
+      format:
+        cfg.family === 'sets'
+          ? opts.setsToWin || null
+          : opts.gamesToWin || null,
+    };
+
+    const state = initialState(sport, [nameFor(sideA), nameFor(sideB)], opts);
+    createMatch({ id, sport, state: stripHistory(state), createdBy: req.user.id, preMatch });
 
     sideA.forEach((u, i) => addMatchPlayer(id, u.id, 0, i));
     sideB.forEach((u, i) => addMatchPlayer(id, u.id, 1, i));
     addScorer(id, req.user.id); // the creator starts as the scorer
     addEvent(id, `${SPORTS[sport].name} match created`, req.user.id);
+    if (preMatch.tossWinner != null) {
+      const first = preMatch.serverFirst === 0 ? sideA : sideB;
+      addEvent(id, `🪙 Toss — ${nameFor(first)} will serve first`, req.user.id);
+    }
 
     const full = getMatch(id);
     broadcast('feed'); // tell feed subscribers to refresh
@@ -494,8 +590,29 @@ export function createApi({ broadcast }) {
       players: m.players,
       scorers: m.scorers,
       events: getEvents(m.id),
+      preMatch: m.preMatch,
+      started: matchStarted(m.id),
       canScore: req.user ? canScore(m.id, req.user.id) : false,
+      canStart: req.user ? isCreatorOf(m.id, req.user.id) && !matchStarted(m.id) : false,
     });
+  });
+
+  // Credibility: only the match creator can move a pre-game match to "live".
+  api.post('/matches/:id/start', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const m = getMatch(req.params.id);
+    if (!m) return res.status(404).json({ error: 'Match not found' });
+    if (matchStarted(m.id)) return res.status(409).json({ error: 'Match already started' });
+    if (m.status === 'finished') return res.status(409).json({ error: 'Match already finished' });
+    if (!isCreatorOf(m.id, req.user.id)) {
+      return res.status(403).json({ error: 'Only the match creator can start this match' });
+    }
+    setMatchStarted(m.id);
+    addEvent(m.id, '🎾 Match started', req.user.id);
+    broadcast(`match:${m.id}`);
+    broadcast('feed');
+    const full = getMatch(m.id);
+    res.json({ ok: true, match: matchSummary(full), full });
   });
 
   // Invite an extra scorer (creator only). Scorers may operate the scoreboard.

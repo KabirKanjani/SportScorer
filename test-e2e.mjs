@@ -147,6 +147,67 @@ const mid = r.data.match?.id;
 // creator is implicitly the first scorer
 check(r.data.full?.scorers?.some((s) => s.name === 'Alex'), 'creator starts as scorer');
 
+// credibility gate: the match is pre-game (not started), toss/details persisted
+const strangerReg = await req('/api/register', { method: 'POST', body: { name: 'Stranger', email: `s${Date.now()}@t.com`, password: 'xxxxxx' } });
+const strangerCookie = strangerReg.setCookie.split(';')[0];
+r = await req(`/api/matches/${mid}`, { cookie: c1 });
+check(r.data.started === false, 'new match starts in pre-game (not started)');
+check(r.data.canStart === true, 'creator sees the start button');
+check(r.data.preMatch?.started === false, 'pre_match serialized with started:false');
+r = await req(`/api/matches/${mid}`, { cookie: strangerCookie });
+check(r.data.canStart === false, 'non-creator cannot start');
+check(r.data.started === false, 'stranger sees unstarted too');
+
+// scoring stays locked until someone starts it, even for the creator
+r = await req(`/api/matches/${mid}/action`, { method: 'POST', cookie: c1, body: { action: { type: 'point', player: 0 } } });
+check(r.status === 409, 'scoring blocked before the match starts');
+
+// only the creator can start
+r = await req(`/api/matches/${mid}/start`, { method: 'POST', cookie: strangerCookie });
+check(r.status === 403, 'stranger cannot start the match');
+r = await req(`/api/matches/${mid}/start`, { method: 'POST', cookie: c1 });
+check(r.status === 200, 'creator starts the match');
+r = await req(`/api/matches/${mid}`, { cookie: c1 });
+check(r.data.started === true && r.data.canStart === false, 'match is now live (started)');
+
+// 6b. per-match format override + toss are honored
+r = await req('/api/matches', {
+  method: 'POST',
+  cookie: c1,
+  body: {
+    sport: 'badminton',
+    sides: { a: [alexId], b: [sam.id] },
+    games: 1, // first to 1 (best of 1 game)
+    toss: { winner: 1, serverFirst: 1 },
+    preMatch: { venue: 'Boardwalk Hall', court: 'Competition hall', conditions: 'Humid' },
+  },
+});
+check(r.status === 200, `create override match (${r.data?.error || r.data?.match?.id})`);
+const ovId = r.data.match?.id;
+check(r.data.full?.preMatch?.venue === 'Boardwalk Hall', 'venue saved in pre_match');
+check(r.data.full?.preMatch?.conditions === 'Humid', 'conditions saved');
+check(r.data.full?.preMatch?.tossWinner === 1 && r.data.full?.preMatch?.serverFirst === 1, 'toss winner + server saved');
+const ovState = r.data.full?.state;
+check(ovState?.gamesToWin === 1, 'games override (1) stored in state');
+r = await req('/api/matches', {
+  method: 'POST',
+  cookie: c1,
+  body: { sport: 'tennis', sides: { a: [alexId], b: [sam.id] }, sets: 99 },
+});
+check(r.status === 400, 'invalid sets override rejected');
+r = await req(`/api/matches/${ovId}`);
+check(r.data.match?.started === false, 'override match is pre-game too');
+
+// 6c. point detailing (opt-in, recorded as events with actor)
+r = await req(`/api/matches/${ovId}/start`, { method: 'POST', cookie: c1 });
+check(r.status === 200, 'override match started');
+r = await req(`/api/matches/${ovId}/action`, { method: 'POST', cookie: c1, body: { action: { type: 'point', player: 1 } } });
+check(r.status === 200, 'point scored on override match');
+r = await req(`/api/matches/${ovId}/action`, { method: 'POST', cookie: c1, body: { action: { type: 'detail', detail: 'Ace serve' } } });
+check(r.status === 200, 'point detail recorded');
+r = await req(`/api/matches/${ovId}`);
+check(r.data.events.some((e) => e.detail.includes('Ace serve') && e.actor?.name === 'Alex'), 'detail event visible with actor');
+
 // 7. score points
 r = await req(`/api/matches/${mid}/action`, { method: 'POST', cookie: c1, body: { action: { type: 'point', player: 0 } } });
 check(r.status === 200, 'score a point');
@@ -156,9 +217,7 @@ r = await req(`/api/matches/${mid}/action`, { method: 'POST', cookie: c1, body: 
 check(r.status === 200, 'undo');
 
 // stranger cannot score, but the creator can invite them as scorer
-r = await req('/api/register', { method: 'POST', body: { name: 'Stranger', email: `s${Date.now()}@t.com`, password: 'xxxxxx' } });
-const strangerCookie = r.setCookie.split(';')[0];
-const strangerId = r.data.user.id;
+const strangerId = strangerReg.data.user.id;
 r = await req(`/api/matches/${mid}/action`, { method: 'POST', cookie: strangerCookie, body: { action: { type: 'point', player: 0 } } });
 check(r.status === 403, 'non-player cannot score');
 
@@ -201,6 +260,8 @@ r = await req('/api/matches', {
   body: { sport: 'tabletennis', sides: { a: [alexId], b: [sam.id] } },
 });
 const ttId = r.data.match.id;
+r = await req(`/api/matches/${ttId}/start`, { method: 'POST', cookie: c1 });
+check(r.status === 200, 'tabletennis match started');
 for (let g = 0; g < 3; g++) {
   for (let i = 0; i < 11; i++) {
     await req(`/api/matches/${ttId}/action`, { method: 'POST', cookie: c1, body: { action: { type: 'point', player: 0 } } });

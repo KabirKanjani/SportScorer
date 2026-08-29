@@ -79,6 +79,10 @@ export function useScoreboard(matchId) {
   const doUndo = useCallback(() => sendCommand({ type: 'undo' }), [sendCommand]);
   const doReset = useCallback(() => sendCommand({ type: 'reset' }), [sendCommand]);
   const doSwap = useCallback(() => sendCommand({ type: 'swap' }), [sendCommand]);
+  const recordDetail = useCallback((detail) => sendCommand({ type: 'detail', detail }), [sendCommand]);
+  const startMatch = useCallback(async () => {
+    await api(`/api/matches/${matchRef.current}/start`, { method: 'POST' });
+  }, []);
 
   return {
     state,
@@ -91,5 +95,7 @@ export function useScoreboard(matchId) {
     doUndo,
     doReset,
     doSwap,
+    recordDetail,
+    startMatch,
   };
 }

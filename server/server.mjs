@@ -36,6 +36,24 @@ const PORT = process.env.PORT || 4321;
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
+// CORS for the bundled mobile app. When web assets ship inside the APK/IPA the
+// app's origin is https://localhost (Android) or capacitor://localhost (iOS),
+// while the API lives on the hosted origin — so we must allow that pair with
+// credentials (session cookies). The web app itself stays same-origin.
+const APP_ORIGINS = new Set(['https://localhost', 'capacitor://localhost', 'http://localhost']);
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && APP_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+  }
+  next();
+});
+
 // Health
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

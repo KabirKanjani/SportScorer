@@ -2,11 +2,15 @@ import { useParams, Link } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useScoreboard } from '../hooks/useScoreboard.js';
 import Scoreboard from '../components/Scoreboard.jsx';
+import Scoreline from '../components/Scoreline.jsx';
 import Controls from '../components/Controls.jsx';
 import CourtAnimation from '../components/CourtAnimation.jsx';
 import { getDisplay, describeDrama } from '../lib/engine.js';
 import { SPORTS } from '../lib/sports.js';
 import { api } from '../api.js';
+
+const DETAIL_FALLBACK = ['Winner', 'Unforced error', 'Ace', 'Other'];
+const ROLE_ICONS = { Creator: '⚑', Player: '🎾', Scorer: '✍' };
 
 export default function MatchPage() {
   const { id } = useParams();
@@ -14,6 +18,9 @@ export default function MatchPage() {
 
   const [scorers, setScorers] = useState([]);
   const [participants, setParticipants] = useState([]);
+  const [pre, setPre] = useState(null); // { preMatch, started, canStart }
+  const [starting, setStarting] = useState(false);
+  const [prompt, setPrompt] = useState({ winner: null, tick: 0 });
 
   // beat: which side actually won the last exchanged point (0|1|null).
   const prevStateRef = useRef(null);
@@ -34,6 +41,24 @@ export default function MatchPage() {
       drama: describeDrama(sb.state),
     };
   }, [display, sb.state]);
+
+  const chips = useMemo(() => {
+    const out = [];
+    const seen = new Set();
+    const add = (userId, name, role) => {
+      if (userId == null || seen.has(userId)) return;
+      seen.add(userId);
+      out.push({ userId, name: name || 'Someone', role });
+    };
+    participants.forEach((p) => add(p.userId, p.name, 'Player'));
+    scorers.forEach((s) => add(s.userId, s.name, 'Scorer'));
+    const creatorId = sb.meta?.createdBy;
+    const creator =
+      participants.find((p) => p.userId === creatorId) ||
+      scorers.find((s) => s.userId === creatorId);
+    add(creatorId, creator?.name, 'Creator');
+    return out;
+  }, [participants, scorers, sb.meta?.createdBy]);
 
   useEffect(() => {
     if (!sb.state) return;
@@ -70,21 +95,44 @@ export default function MatchPage() {
       }
     }
     setBeat((bd) => ({ winner, tick: bd.tick + 1, gameWon, setWon, matchWon }));
+    if (winner !== null) {
+      setPrompt((p) => ({ winner, tick: p.tick + 1 }));
+    }
   }, [sb.state]);
 
   useEffect(() => {
     let alive = true;
-    api(`/api/matches/${id}`)
-      .then((d) => {
-        if (!alive) return;
-        setScorers(d.scorers || []);
-        setParticipants(d.players || []);
-      })
-      .catch(() => {});
+    const load = () =>
+      api(`/api/matches/${id}`)
+        .then((d) => {
+          if (!alive) return;
+          setScorers(d.scorers || []);
+          setParticipants(d.players || []);
+          setPre({
+            preMatch: d.preMatch || null,
+            started: d.started,
+            canStart: d.canStart,
+          });
+        })
+        .catch(() => {});
+    load();
     return () => {
       alive = false;
     };
   }, [id]);
+
+  async function handleStart() {
+    setStarting(true);
+    try {
+      await sb.startMatch();
+      setPre((p) => ({ ...p, started: true, canStart: false }));
+    } catch {
+      setStarting(false);
+    }
+  }
+
+  const details = SPORTS[sb.state?.sport]?.pointDetails || DETAIL_FALLBACK;
+  const sideNames = display?.playerNames || ['Side A', 'Side B'];
 
   return (
     <div className="match-page">
@@ -115,6 +163,45 @@ export default function MatchPage() {
         )}
       </div>
 
+      {chips.length > 0 && (
+        <div className="role-chips">
+          {chips.map((c) => (
+            <span key={c.userId} className={`role-chip role-${c.role.toLowerCase()}`}>
+              <b>{ROLE_ICONS[c.role] || '·'}</b> {c.name} <em>{c.role}</em>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {display && <Scoreline display={display} />}
+
+      {pre && !pre.started && (
+        <div className="panel pregame">
+          <div className="panel-title">Pre-match</div>
+          <div className="prematch-grid">
+            <div><span>Venue</span><b>{pre.preMatch?.venue || '—'}</b></div>
+            <div><span>Court / surface</span><b>{pre.preMatch?.court || '—'}</b></div>
+            <div><span>Conditions</span><b>{pre.preMatch?.conditions || '—'}</b></div>
+            <div><span>Format</span><b>{formatLabel(sb.meta?.sport, pre.preMatch?.format)}</b></div>
+            {pre.preMatch?.tossWinner != null && (
+              <>
+                <div><span>Coin toss</span><b>{sideNames[pre.preMatch.tossWinner]} won 🪙</b></div>
+                <div><span>Serves first</span><b>{sideNames[pre.preMatch.serverFirst ?? pre.preMatch.tossWinner]}</b></div>
+              </>
+            )}
+          </div>
+          {pre.canStart ? (
+            <button className="btn primary big" onClick={handleStart} disabled={starting}>
+              {starting ? 'Starting…' : 'Start the match 🎾'}
+            </button>
+          ) : (
+            <p className="muted small gate-note">
+              🔒 Scoring is locked until the match creator presses <b>Start</b>.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="match-layout">
         <div className="match-main">
           {display ? (
@@ -138,6 +225,31 @@ export default function MatchPage() {
           )}
 
           {sb.canScore && display && <Controls scoreboard={sb} display={display} meta={sb.meta} />}
+
+          {sb.canScore && !finished && prompt.winner != null && prompt.tick > 0 && (
+            <div className="point-detail">
+              <div className="point-detail-head">
+                How did <b>{sideNames[prompt.winner]}</b> win the point?
+                <button className="x" onClick={() => setPrompt((p) => ({ ...p, winner: null }))} aria-label="dismiss">
+                  ✕
+                </button>
+              </div>
+              <div className="point-detail-chips">
+                {details.map((d) => (
+                  <button
+                    key={d}
+                    className="chip"
+                    onClick={() => {
+                      sb.recordDetail(d);
+                      setPrompt((p) => ({ ...p, winner: null }));
+                    }}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {sb.error && <div className="form-error">{sb.error}</div>}
 
@@ -186,4 +298,14 @@ function timeStr(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatLabel(sportId, f) {
+  const cfg = SPORTS[sportId];
+  if (!cfg) return '';
+  if (cfg.family === 'sets') {
+    const n = f || cfg.match.setsToWin;
+    return n === 1 ? 'Single set' : `Best of ${n * 2 - 1} sets`;
+  }
+  return `First to ${f || cfg.match.gamesToWin} games`;
 }

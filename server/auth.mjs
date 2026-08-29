@@ -67,7 +67,9 @@ export function cookieOptions(req) {
   const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
   return {
     httpOnly: true,
-    sameSite: 'lax',
+    // 'none' when over HTTPS so the bundled mobile app (origin https://localhost
+    // / capacitor://localhost) can auth against the hosted API; 'lax' in dev.
+    sameSite: secure ? 'none' : 'lax',
     secure,
     path: '/',
     maxAge: SESSION_DAYS * 24 * 3600 * 1000,

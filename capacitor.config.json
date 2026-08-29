@@ -2,8 +2,5 @@
   "appId": "com.sportscore.app",
   "appName": "SportScore",
   "webDir": "dist",
-  "server": {
-    "url": "https://sportscore.onrender.com",
-    "androidScheme": "https"
-  }
+  "androidScheme": "https"
 }
