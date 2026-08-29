@@ -30,6 +30,7 @@ import {
   addScorer,
   matchStarted,
   setMatchStarted,
+  setPreMatch,
   createTournament,
   getTournamentById,
   listTournamentsForUser,
@@ -233,7 +234,8 @@ export async function processMatchAction(matchId, action, user, broadcast = () =
   if (!m) return { error: 'Match not found', code: 404 };
 
   // Credibility gate: scoring stays locked until the creator starts the match.
-  if (!matchStarted(matchId) && action.type !== 'swap') {
+  // Toss ("server") and side swaps stay allowed so the table can be set up.
+  if (!matchStarted(matchId) && action.type !== 'swap' && action.type !== 'server') {
     return {
       error: 'This match has not started yet — only the creator can start it.',
       code: 409,
@@ -271,6 +273,8 @@ export async function processMatchAction(matchId, action, user, broadcast = () =
     } else if (action.type === 'detail') {
       const detail = String(action.detail || '').trim();
       if (detail) addEvent(matchId, `↳ ${detail}`, user.id);
+    } else if (action.type === 'server') {
+      addEvent(matchId, `🎾 ${next.playerNames[action.player]} will serve first`, user.id);
     }
     broadcast(`match:${matchId}`);
     broadcast('feed');
@@ -558,6 +562,7 @@ export function createApi({ broadcast }) {
       conditions: txt(pre.conditions, 160),
       tossWinner: toss.winner != null ? toss.winner : null,
       serverFirst: serverFirst != null ? serverFirst : null,
+      detailPrompt: !!pre.detailPrompt,
       format:
         cfg.family === 'sets'
           ? opts.setsToWin || null
@@ -613,6 +618,49 @@ export function createApi({ broadcast }) {
     broadcast('feed');
     const full = getMatch(m.id);
     res.json({ ok: true, match: matchSummary(full), full });
+  });
+
+  // Coin toss after creation: any player/scorer flips, then the toss winner
+  // (or anyone present) chooses who serves first. Persisted into pre_match and
+  // applied to the engine state (serverIdx).
+  api.post('/matches/:id/toss', async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const m = getMatch(req.params.id);
+    if (!m) return res.status(404).json({ error: 'Match not found' });
+    if (m.status === 'finished') return res.status(409).json({ error: 'Match already finished' });
+    if (matchStarted(m.id)) return res.status(409).json({ error: 'The match has already started' });
+    if (!canScore(m.id, req.user.id)) {
+      return res.status(403).json({ error: 'Only players and scorers can set the toss' });
+    }
+    const { winner, serverFirst } = req.body || {};
+    if (winner != null && winner !== 0 && winner !== 1) {
+      return res.status(400).json({ error: 'winner must be 0 or 1' });
+    }
+    if (serverFirst != null && serverFirst !== 0 && serverFirst !== 1) {
+      return res.status(400).json({ error: 'serverFirst must be 0 or 1' });
+    }
+    const target = serverFirst != null ? serverFirst : winner;
+    if (winner == null && serverFirst == null) {
+      return res.status(400).json({ error: 'Provide winner and/or serverFirst' });
+    }
+    const patch = {};
+    if (winner != null) patch.tossWinner = winner;
+    if (serverFirst != null) patch.serverFirst = serverFirst;
+
+    const result = await processMatchAction(m.id, { type: 'server', player: target }, req.user, broadcast);
+    if (result.error) return res.status(result.code || 400).json({ error: result.error });
+    setPreMatch(m.id, patch);
+
+    const names = [m.state.playerNames[0] || 'Side A', m.state.playerNames[1] || 'Side B'];
+    if (winner != null) {
+      addEvent(m.id, `🪙 ${names[winner]} won the toss — ${names[target]} serves first`, req.user.id);
+    } else {
+      addEvent(m.id, `🔀 ${names[target]} serves first`, req.user.id);
+    }
+    broadcast(`match:${m.id}`);
+    broadcast('feed');
+    const full = getMatch(m.id);
+    res.json({ ok: true, preMatch: full.preMatch, state: stripHistory(full.state) });
   });
 
   // Invite an extra scorer (creator only). Scorers may operate the scoreboard.

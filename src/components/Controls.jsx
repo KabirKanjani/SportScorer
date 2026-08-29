@@ -1,6 +1,16 @@
 import { useState } from 'react';
 
-export default function Controls({ scoreboard, display, meta }) {
+export default function Controls({
+  scoreboard,
+  display,
+  meta,
+  detailEnabled,
+  detailWinner,
+  detailPromptOn,
+  detailOptions = [],
+  onRecordDetail,
+  onDismissDetail,
+}) {
   const { playerNames, matchOver } = display;
 
   return (
@@ -25,6 +35,24 @@ export default function Controls({ scoreboard, display, meta }) {
             <span className="btn-name">{playerNames[1]}</span>
           </button>
         </div>
+
+        {detailEnabled && detailPromptOn && (
+          <div className="point-detail">
+            <div className="point-detail-head">
+              How did <b>{detailWinner}</b> win the point?
+              <button className="x" onClick={onDismissDetail} aria-label="dismiss">
+                ✕
+              </button>
+            </div>
+            <div className="point-detail-chips">
+              {detailOptions.map((d) => (
+                <button key={d} className="chip" onClick={() => onRecordDetail(d)}>
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="panel">

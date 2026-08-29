@@ -134,8 +134,23 @@ export function apply(state, action) {
       s.gamePoints = str(s.gamePoints);
       s.serverIdx = s.serverIdx === 0 ? 1 : 0;
       if (s.winnerIdx !== null) s.winnerIdx = s.winnerIdx === 0 ? 1 : 0;
-      s.completedSets = s.completedSets.map(({ a, b, tb }) => ({ a: b, b: a, tb })).reverse();
+      s.completedSets = s.completedSets
+        .map(({ a, b, tb, tbPts }) => ({
+          a: b,
+          b: a,
+          tb,
+          tbPts: tbPts ? [tbPts[1], tbPts[0]] : undefined,
+        }))
+        .reverse();
       s.completedGames = s.completedGames.map(([a, b]) => [b, a]).reverse();
+      return s;
+    }
+    case 'server': {
+      // Pre-match toss decision: choose who serves first.
+      const p = action.player;
+      if (p !== 0 && p !== 1) return s;
+      s.serverIdx = p;
+      s.serveCount = 0;
       return s;
     }
     default:
@@ -228,11 +243,12 @@ function completeTennisGame(s, sport) {
   } else {
     if ((a >= 7 && a - b >= 2) || (b >= 7 && b - a >= 2)) {
       const tbWinner = a > b ? 0 : 1;
-      // tiebreak winner takes the set; record scoreline as 7-6 (+tb flag)
+      // tiebreak winner takes the set; record scoreline as 7-6 (+ tb pts)
       s.completedSets.push({
         a: tbWinner === 0 ? 7 : 6,
         b: tbWinner === 1 ? 7 : 6,
         tb: true,
+        tbPts: [a, b],
       });
       s.currentSetGames[tbWinner] = Math.max(s.currentSetGames[tbWinner], 6) + 1;
       s.setWins[tbWinner] += 1;

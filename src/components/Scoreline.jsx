@@ -1,59 +1,67 @@
-// Broadcast-style full scoreline (like a Wimbledon / US Open on-screen graphic).
-// Shows every finished set (or game for the points family) plus the live piece.
+// Broadcast-style scoreline, Wimbledon / US Open look: player names with the
+// sets (or games) they've won, then one column per completed set/game, and a
+// final "now" column for the live set/game. Also dubs the match duration.
 export default function Scoreline({ display }) {
   if (!display) return null;
 
   const names = display.playerNames;
-  const lines = [];
+  const setsFamily = display.setsFamily;
 
-  if (display.setsFamily) {
-    const sets = display.completedSets || [];
-    const live = (display.gamesInSet && [
-      display.gamesInSet[0],
-      display.gamesInSet[1],
-    ]) || [0, 0];
-    const scoreline = sets.length
-      ? sets
-          .map((s) => `${s.a}-${s.b}${s.tb ? 'ᴸᵛ' : ''}`)
-          .concat([`${live[0]}-${live[1]}`])
-          .join('  ·  ')
-      : `${live[0]}-${live[1]}`;
-    lines.push(
-      { label: 'SETS', a: display.setCounts[0], b: display.setCounts[1] },
-      { label: 'GAMES', a: live[0], b: live[1] },
-      { label: '', line: scoreline }
-    );
-  } else {
-    const games = display.completedGames || [];
-    const pts = display.points || [0, 0];
-    const scoreline = games.length
-      ? games.map((g) => `${g[0]}-${g[1]}`).concat([`${pts[0]}-${pts[1]}`]).join('  ·  ')
-      : `${pts[0]}-${pts[1]}`;
-    lines.push(
-      { label: 'GAMES', a: display.setCounts[0], b: display.setCounts[1] },
-      { label: '', line: scoreline }
-    );
-  }
+  const cols = setsFamily ? (display.completedSets || []).length : (display.completedGames || []).length;
+  const liveA = setsFamily ? (display.gamesInSet?.[0] ?? 0) : (display.points?.[0] ?? 0);
+  const liveB = setsFamily ? (display.gamesInSet?.[1] ?? 0) : (display.points?.[1] ?? 0);
+  const setScore = (s) => (s.tb ? `${s.a}-${s.b} (${s.tbPts?.[0]}-${s.tbPts?.[1]})` : `${s.a}-${s.b}`);
+
+  const headerLabel = setsFamily ? 'sets' : 'games';
+  const showCols = Math.max(cols, 1);
 
   return (
     <div className={`scoreline ${display.matchOver ? 'over' : ''}`}>
-      <div className="scoreline-names">
-        <span>{names[0]}</span>
-        <span className="scoreline-divider-label">{display.setsFamily ? 'set by set' : 'game by game'}</span>
-        <span>{names[1]}</span>
-      </div>
-      <div className="scoreline-cols">
-        {lines.map((ln, i) =>
-          ln.line != null ? (
-            <div className="scoreline-line" key={i}>{ln.line}</div>
+      <div className="scoreline-board">
+        <table className="scoreline-table">
+          <thead>
+            <tr>
+              <th className="sl-player">{headerLabel}</th>
+              {Array.from({ length: cols }, (_, i) => (
+                <th key={i} className="sl-col">
+                  {setsFamily ? `S${i + 1}` : `G${i + 1}`}
+                </th>
+              ))}
+              <th className="sl-col now">now</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[0, 1].map((side) => (
+              <tr key={side} className={display.winnerIdx === side ? 'winning' : undefined}>
+                <td className="sl-player">
+                  <span className="sl-name">{names[side]}</span>
+                  <b className="sl-count">{setsFamily ? display.setCounts[side] ?? 0 : display.setCounts[side] ?? 0}</b>
+                </td>
+                {Array.from({ length: cols }, (_, i) => (
+                  <td key={i} className={`sl-col ${setsFamily && display.completedSets[i]?.tb ? 'tb' : ''}`}>
+                    {setsFamily
+                      ? setScore(display.completedSets[i])
+                      : `${display.completedGames[i][0]}-${display.completedGames[i][1]}`}
+                  </td>
+                ))}
+                <td className="sl-col now">
+                  {liveA}-{liveB}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="sl-caption">
+          {setsFamily ? (
+            <>
+              {names[0]} · {liveA}–{liveB} in the current set
+            </>
           ) : (
-            <div className="scoreline-big" key={i}>
-              <b>{ln.a}</b>
-              <span>{ln.label}</span>
-              <b>{ln.b}</b>
-            </div>
-          )
-        )}
+            <>
+              {names[0]} · {liveA}–{liveB} in the current game
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

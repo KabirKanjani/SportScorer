@@ -87,12 +87,10 @@ export default function NewMatch() {
   const [b1, setB1] = useState(null);
   const [b2, setB2] = useState(null);
   const [doubles, setDoubles] = useState(false);
-  const [venue, setVenue] = useState('');
+const [venue, setVenue] = useState('');
   const [court, setCourt] = useState(null);
   const [conditions, setConditions] = useState('');
-  const [tossWinner, setTossWinner] = useState(null); // 0|1|null until flipped
-  const [serverFirst, setServerFirst] = useState(null); // 0|1|undefined (toss decides)
-  const [flipping, setFlipping] = useState(false);
+  const [pointDetail, setPointDetail] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -104,21 +102,9 @@ export default function NewMatch() {
   const [target, setTarget] = useState(2);
 
   function changeSport(id) {
-  const sets = SPORTS[id].family === 'sets';
-  setSport(id);
-  setTarget(sets ? SPORTS[id].match.setsToWin : SPORTS[id].match.gamesToWin);
-}
-
-  function flip() {
-    if (flipping) return;
-    setFlipping(true);
-    setError('');
-    setTimeout(() => {
-      const w = Math.random() < 0.5 ? 0 : 1;
-      setTossWinner(w);
-      setServerFirst(w); // default: toss winner serves first
-      setFlipping(false);
-    }, 600);
+    const sets = SPORTS[id].family === 'sets';
+    setSport(id);
+    setTarget(sets ? SPORTS[id].match.setsToWin : SPORTS[id].match.gamesToWin);
   }
 
   async function create() {
@@ -141,14 +127,11 @@ export default function NewMatch() {
             b: sideB.map((p) => p.id),
           },
           ...(isSetsFamily ? { sets: target } : { games: target }),
-          toss: {
-            winner: tossWinner,
-            serverFirst: serverFirst ?? undefined,
-          },
           preMatch: {
             venue: venue.trim() || null,
             court: court || null,
             conditions: conditions.trim() || null,
+            detailPrompt: pointDetail,
           },
         },
       });
@@ -205,37 +188,6 @@ export default function NewMatch() {
       </div>
 
       <div className="panel">
-        <div className="panel-title">Coin toss 🪙</div>
-        <div className="toss-row">
-          {tossWinner === null ? (
-            <>
-              <button className="btn primary" onClick={flip} disabled={flipping}>
-                {flipping ? 'Flipping…' : 'Flip the coin'}
-              </button>
-              <p className="muted small">A random toss decides who serves first — no disputes.</p>
-            </>
-          ) : (
-            <div className="toss-result">
-              <div className="toss-winner">
-                🎉 <b>{tossWinner === 0 ? (a1 || myUser)?.name : (b1?.name || 'Side B')}</b> won the toss
-              </div>
-              <div className="toss-choose">
-                <span className="muted small">Who serves first?</span>
-                <div className="seg">
-                  <button className={`seg-btn ${serverFirst === 0 ? 'active' : ''}`} onClick={() => setServerFirst(0)}>
-                    {a1?.name || myUser.name}
-                  </button>
-                  <button className={`seg-btn ${serverFirst === 1 ? 'active' : ''}`} onClick={() => setServerFirst(1)}>
-                    {b1?.name || 'Side B'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="panel">
         <div className="panel-title">Pre-match details</div>
         <div className="field">
           <label>Venue / grounds</label>
@@ -264,6 +216,17 @@ export default function NewMatch() {
             maxLength={160}
           />
         </div>
+        <label className="detail-toggle">
+          <input
+            type="checkbox"
+            checked={pointDetail}
+            onChange={(e) => setPointDetail(e.target.checked)}
+          />
+          <span>
+            <b>Point-by-point detail</b>
+            <em>After every point, ask how it was won (ace, winner, double fault…).</em>
+          </span>
+        </label>
       </div>
 
       <div className="panel">
@@ -302,8 +265,9 @@ export default function NewMatch() {
           {busy ? 'Creating…' : 'Create the match'}
         </button>
         <p className="muted small">
-          After creating, everyone gets a link. Only the listed players and invited scorers can
-          score it — and only the creator can move it from the coin-toss stage to live play.
+          After creating, everyone gets a link. You'll flip the toss and set the format on the
+          match page, then only you (the creator) can move it to live play. Only the listed
+          players and invited scorers can score it.
         </p>
       </div>
     </div>

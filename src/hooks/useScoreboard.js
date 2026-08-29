@@ -83,6 +83,9 @@ export function useScoreboard(matchId) {
   const startMatch = useCallback(async () => {
     await api(`/api/matches/${matchRef.current}/start`, { method: 'POST' });
   }, []);
+  const setToss = useCallback(async (t) => {
+    await api(`/api/matches/${matchRef.current}/toss`, { method: 'POST', body: t });
+  }, []);
 
   return {
     state,
@@ -97,5 +100,6 @@ export function useScoreboard(matchId) {
     doSwap,
     recordDetail,
     startMatch,
+    setToss,
   };
 }

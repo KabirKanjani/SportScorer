@@ -179,7 +179,7 @@ r = await req('/api/matches', {
     sides: { a: [alexId], b: [sam.id] },
     games: 1, // first to 1 (best of 1 game)
     toss: { winner: 1, serverFirst: 1 },
-    preMatch: { venue: 'Boardwalk Hall', court: 'Competition hall', conditions: 'Humid' },
+    preMatch: { venue: 'Boardwalk Hall', court: 'Competition hall', conditions: 'Humid', detailPrompt: true },
   },
 });
 check(r.status === 200, `create override match (${r.data?.error || r.data?.match?.id})`);
@@ -187,6 +187,7 @@ const ovId = r.data.match?.id;
 check(r.data.full?.preMatch?.venue === 'Boardwalk Hall', 'venue saved in pre_match');
 check(r.data.full?.preMatch?.conditions === 'Humid', 'conditions saved');
 check(r.data.full?.preMatch?.tossWinner === 1 && r.data.full?.preMatch?.serverFirst === 1, 'toss winner + server saved');
+check(r.data.full?.preMatch?.detailPrompt === true, 'point-detail preference saved');
 const ovState = r.data.full?.state;
 check(ovState?.gamesToWin === 1, 'games override (1) stored in state');
 r = await req('/api/matches', {
@@ -197,6 +198,39 @@ r = await req('/api/matches', {
 check(r.status === 400, 'invalid sets override rejected');
 r = await req(`/api/matches/${ovId}`);
 check(r.data.match?.started === false, 'override match is pre-game too');
+
+// 6b2. toss happens AFTER creation, on the match page, via /matches/:id/toss
+r = await req('/api/matches', {
+  method: 'POST',
+  cookie: c1,
+  body: { sport: 'tennis', sides: { a: [alexId], b: [sam.id] }, sets: 2 },
+});
+check(r.status === 200, 'create tennis match without pre-toss');
+const ttossId = r.data.match?.id;
+check(r.data.full?.preMatch?.tossWinner == null, 'no toss decided at creation');
+// stranger / non-participant cannot set the toss
+r = await req(`/api/matches/${ttossId}/toss`, { method: 'POST', cookie: strangerCookie, body: { winner: 0, serverFirst: 0 } });
+check(r.status === 403, 'stranger cannot set the toss');
+// scoring still locked pre-start, toss allowed
+r = await req(`/api/matches/${ttossId}/action`, { method: 'POST', cookie: c1, body: { action: { type: 'point', player: 0 } } });
+check(r.status === 409, 'scoring still locked before toss/start');
+// toss flip -> winner picks the server (winner 0, server 1)
+r = await req(`/api/matches/${ttossId}/toss`, { method: 'POST', cookie: c1, body: { winner: 0, serverFirst: 1 } });
+check(r.status === 200, 'creator (player) sets the toss');
+check(r.data.preMatch?.tossWinner === 0 && r.data.preMatch?.serverFirst === 1, 'toss results persisted in pre_match');
+check(r.data.state?.serverIdx === 1, 'toss updates engine serverIdx');
+r = await req(`/api/matches/${ttossId}`, { cookie: c1 });
+check(r.data.events.some((e) => e.detail.includes('won the toss') && e.detail.includes('serves first')), 'toss events logged');
+// the server action is allowed pre-start (gate exception covers the toss)
+r = await req(`/api/matches/${ttossId}/action`, { method: 'POST', cookie: c1, body: { action: { type: 'server', player: 0 } } });
+check(r.status === 200, 'server action allowed pre-start');
+r = await req(`/api/matches/${ttossId}/action`, { method: 'POST', cookie: c1, body: { action: { type: 'server', player: 1 } } });
+check(r.status === 200, 'server can be changed before start');
+// after start the toss is closed
+r = await req(`/api/matches/${ttossId}/start`, { method: 'POST', cookie: c1 });
+check(r.status === 200, 'tennis match started');
+r = await req(`/api/matches/${ttossId}/toss`, { method: 'POST', cookie: c1, body: { winner: 1 } });
+check(r.status === 409, 'toss locked after the match starts');
 
 // 6c. point detailing (opt-in, recorded as events with actor)
 r = await req(`/api/matches/${ovId}/start`, { method: 'POST', cookie: c1 });

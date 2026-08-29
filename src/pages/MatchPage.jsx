@@ -112,6 +112,7 @@ export default function MatchPage() {
             preMatch: d.preMatch || null,
             started: d.started,
             canStart: d.canStart,
+            canToss: d.canScore,
           });
         })
         .catch(() => {});
@@ -120,6 +121,45 @@ export default function MatchPage() {
       alive = false;
     };
   }, [id]);
+
+  const [tossWinner, setTossWinner] = useState(null);
+  const [serverFirst, setServerFirst] = useState(null);
+  const [tossBusy, setTossBusy] = useState(false);
+
+  useEffect(() => {
+    if (pre?.preMatch) {
+      setTossWinner(pre.preMatch.tossWinner ?? null);
+      setServerFirst(pre.preMatch.serverFirst ?? null);
+    }
+  }, [pre?.preMatch?.tossWinner, pre?.preMatch?.serverFirst]);
+
+  async function flipToss() {
+    if (tossBusy) return;
+    setTossBusy(true);
+    const w = Math.random() < 0.5 ? 0 : 1;
+    setTossWinner(w);
+    setServerFirst(w);
+    try {
+      await sb.setToss({ winner: w, serverFirst: w });
+    } catch {
+      /* ws push will surface errors */
+    } finally {
+      setTossBusy(false);
+    }
+  }
+
+  async function chooseServer(node) {
+    if (tossBusy) return;
+    setTossBusy(true);
+    setServerFirst(node);
+    try {
+      await sb.setToss({ serverFirst: node });
+    } catch {
+      /* ignore */
+    } finally {
+      setTossBusy(false);
+    }
+  }
 
   async function handleStart() {
     setStarting(true);
@@ -133,6 +173,7 @@ export default function MatchPage() {
 
   const details = SPORTS[sb.state?.sport]?.pointDetails || DETAIL_FALLBACK;
   const sideNames = display?.playerNames || ['Side A', 'Side B'];
+  const detailEnabled = pre?.preMatch?.detailPrompt === true && !finished;
 
   return (
     <div className="match-page">
@@ -183,13 +224,56 @@ export default function MatchPage() {
             <div><span>Court / surface</span><b>{pre.preMatch?.court || '—'}</b></div>
             <div><span>Conditions</span><b>{pre.preMatch?.conditions || '—'}</b></div>
             <div><span>Format</span><b>{formatLabel(sb.meta?.sport, pre.preMatch?.format)}</b></div>
-            {pre.preMatch?.tossWinner != null && (
-              <>
-                <div><span>Coin toss</span><b>{sideNames[pre.preMatch.tossWinner]} won 🪙</b></div>
-                <div><span>Serves first</span><b>{sideNames[pre.preMatch.serverFirst ?? pre.preMatch.tossWinner]}</b></div>
-              </>
+            {pre.preMatch?.detailPrompt === true && (
+              <div><span>Point detail</span><b>On 🎯</b></div>
             )}
           </div>
+
+          <div className="pregame-toss">
+            <div className="panel-title">Coin toss 🪙</div>
+            {tossWinner === null ? (
+              <div className="toss-flip">
+                <button
+                  className="btn primary"
+                  onClick={flipToss}
+                  disabled={tossBusy || pre.preMatch?.tossWinner != null || !pre.canToss}
+                >
+                  {tossBusy ? 'Flipping…' : 'Flip the coin'}
+                </button>
+                <p className="muted small">
+                  {pre.canToss
+                    ? 'The toss happens here — with the real player names — so the winner can pick who serves first.'
+                    : 'The players or a scorer will flip the toss here before the match starts.'}
+                </p>
+              </div>
+            ) : (
+              <div className="toss-result">
+                <div className="toss-winner">
+                  🎉 <b>{sideNames[tossWinner]}</b> won the toss
+                </div>
+                <div className="toss-choose">
+                  <span className="muted small">Who serves first?</span>
+                  <div className="seg">
+                    <button
+                      className={`seg-btn ${serverFirst === 0 ? 'active' : ''}`}
+                      onClick={() => chooseServer(0)}
+                      disabled={tossBusy || !pre.canToss}
+                    >
+                      {sideNames[0]}
+                    </button>
+                    <button
+                      className={`seg-btn ${serverFirst === 1 ? 'active' : ''}`}
+                      onClick={() => chooseServer(1)}
+                      disabled={tossBusy || !pre.canToss}
+                    >
+                      {sideNames[1]}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {pre.canStart ? (
             <button className="btn primary big" onClick={handleStart} disabled={starting}>
               {starting ? 'Starting…' : 'Start the match 🎾'}
@@ -224,31 +308,21 @@ export default function MatchPage() {
             </div>
           )}
 
-          {sb.canScore && display && <Controls scoreboard={sb} display={display} meta={sb.meta} />}
-
-          {sb.canScore && !finished && prompt.winner != null && prompt.tick > 0 && (
-            <div className="point-detail">
-              <div className="point-detail-head">
-                How did <b>{sideNames[prompt.winner]}</b> win the point?
-                <button className="x" onClick={() => setPrompt((p) => ({ ...p, winner: null }))} aria-label="dismiss">
-                  ✕
-                </button>
-              </div>
-              <div className="point-detail-chips">
-                {details.map((d) => (
-                  <button
-                    key={d}
-                    className="chip"
-                    onClick={() => {
-                      sb.recordDetail(d);
-                      setPrompt((p) => ({ ...p, winner: null }));
-                    }}
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
-            </div>
+          {sb.canScore && display && (
+            <Controls
+              scoreboard={sb}
+              display={display}
+              meta={sb.meta}
+              detailEnabled={detailEnabled}
+              detailWinner={prompt.winner != null ? sideNames[prompt.winner] : null}
+              detailPromptOn={detailEnabled && prompt.winner != null && prompt.tick > 0}
+              detailOptions={details}
+              onRecordDetail={(d) => {
+                sb.recordDetail(d);
+                setPrompt((p) => ({ ...p, winner: null }));
+              }}
+              onDismissDetail={() => setPrompt((p) => ({ ...p, winner: null }))}
+            />
           )}
 
           {sb.error && <div className="form-error">{sb.error}</div>}

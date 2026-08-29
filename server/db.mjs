@@ -596,6 +596,15 @@ export function setMatchStarted(matchId) {
   db.prepare(`UPDATE match SET pre_match = ? WHERE id = ?`).run(JSON.stringify(p), matchId);
 }
 
+// Merge a partial update into pre_match (toss result, details, preferences).
+export function setPreMatch(matchId, patch) {
+  const m = db.prepare(`SELECT pre_match FROM match WHERE id = ?`).get(matchId);
+  const cur = m && m.pre_match ? JSON.parse(m.pre_match) : { started: false };
+  const next = { ...cur, ...patch };
+  db.prepare(`UPDATE match SET pre_match = ? WHERE id = ?`).run(JSON.stringify(next), matchId);
+  return next;
+}
+
 // ---------------- Events -----------------------------------------------------
 
 export function addEvent(matchId, detail, actorId = null) {
