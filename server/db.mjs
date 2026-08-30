@@ -359,6 +359,108 @@ export function listSitemapEntries() {
   return { users, matches, tournaments };
 }
 
+// Global per-sport leaderboard computed from finished matches. A match counts
+// for every player on the winning/losing side, so doubles awards both partners.
+// Streaks are ordinal: positive = wins in a row, negative = losses in a row.
+export function leaderboard({ sport = null, limit = 100 } = {}) {
+  const finished = db
+    .prepare(`SELECT id, sport, state FROM match WHERE status = 'finished' ORDER BY finished_at ASC`)
+    .all();
+  if (finished.length === 0) return [];
+
+  const byMatch = new Map();
+  for (const p of db.prepare(`SELECT match_id, user_id, side FROM match_player`).all()) {
+    const arr = byMatch.get(p.match_id) || [];
+    arr.push(p);
+    byMatch.set(p.match_id, arr);
+  }
+  const users = new Map(
+    db.prepare(`SELECT id, name, username, avatar FROM user`).all().map((u) => [u.id, u])
+  );
+
+  const stat = new Map(); // user -> { global, bySport }
+  const slot = (us, key) => {
+    if (key === 'global' && !us.global) us.global = { played: 0, wins: 0, losses: 0, seq: [] };
+    if (key !== 'global' && !us.bySport.has(key)) {
+      us.bySport.set(key, { played: 0, wins: 0, losses: 0, seq: [] });
+    }
+    return key === 'global' ? us.global : us.bySport.get(key);
+  };
+
+  for (const m of finished) {
+    let state;
+    try {
+      state = typeof m.state === 'string' ? JSON.parse(m.state) : m.state;
+    } catch {
+      continue;
+    }
+    if (!state || !state.matchOver || state.winnerIdx == null) continue;
+    const wi = state.winnerIdx;
+    for (const p of byMatch.get(m.id) || []) {
+      const won = p.side === wi ? 1 : 0;
+      let us = stat.get(p.user_id);
+      if (!us) {
+        us = { global: null, bySport: new Map() };
+        stat.set(p.user_id, us);
+      }
+      for (const key of ['global', m.sport]) {
+        const s = slot(us, key);
+        s.played += 1;
+        if (won) s.wins += 1;
+        else s.losses += 1;
+        s.seq.push(won);
+      }
+    }
+  }
+
+  const streakOf = (s) => {
+    let curW = 0;
+    let curL = 0;
+    let best = 0;
+    for (const won of s.seq) {
+      if (won) {
+        curW += 1;
+        curL = 0;
+        if (curW > best) best = curW;
+      } else {
+        curL += 1;
+        curW = 0;
+        if (curL > best) best = curL;
+      }
+    }
+    const cur = curW > curL ? curW : -curL;
+    return { streak: cur, best };
+  };
+
+  const rows = [];
+  for (const [uid, us] of stat) {
+    const s = sport ? us.bySport.get(sport) : us.global;
+    if (!s || s.played === 0) continue;
+    const u = users.get(uid);
+    if (!u) continue;
+    const { streak, best } = streakOf(s);
+    rows.push({
+      user: { id: uid, name: u.name, username: u.username, avatar: u.avatar },
+      played: s.played,
+      wins: s.wins,
+      losses: s.losses,
+      winPct: Math.round((100 * s.wins) / s.played),
+      streak,
+      best,
+    });
+  }
+
+  rows.sort(
+    (a, b) =>
+      b.wins - a.wins ||
+      b.winPct - a.winPct ||
+      a.losses - b.losses ||
+      a.user.name.localeCompare(b.user.name)
+  );
+
+  return rows.slice(0, limit).map((r, i) => ({ rank: i + 1, ...r }));
+}
+
 export function searchUsers(q, limit = 8) {
   if (!q) {
     return db

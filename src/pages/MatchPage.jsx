@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useScoreboard } from '../hooks/useScoreboard.js';
 import Scoreboard from '../components/Scoreboard.jsx';
@@ -15,12 +15,15 @@ const ROLE_ICONS = { Creator: '⚑', Player: '🎾', Scorer: '✍' };
 
 export default function MatchPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const sb = useScoreboard(id);
 
   const [scorers, setScorers] = useState([]);
   const [participants, setParticipants] = useState([]);
   const [pre, setPre] = useState(null); // { preMatch, started, canStart }
   const [starting, setStarting] = useState(false);
+  const [rematching, setRematching] = useState(false);
+  const [rematchError, setRematchError] = useState(null);
   const [prompt, setPrompt] = useState({ winner: null, tick: 0 });
 
   // beat: which side actually won the last exchanged point (0|1|null).
@@ -172,6 +175,42 @@ export default function MatchPage() {
     }
   }
 
+  // One-tap rematch: new match with same sport, same sides, same format/toss
+  // preferences, so a "best of N" series is effortless.
+  async function handleRematch() {
+    if (rematching || !sb.state) return;
+    setRematching(true);
+    setRematchError(null);
+    try {
+      const sideIds = (side) =>
+        participants
+          .filter((p) => p.side === side)
+          .sort((a, b) => a.pos - b.pos)
+          .map((p) => p.userId);
+      const body = {
+        sport: sb.state.sport,
+        sides: { a: sideIds(0), b: sideIds(1) },
+        preMatch: {
+          venue: pre?.preMatch?.venue || null,
+          court: pre?.preMatch?.court || null,
+          conditions: pre?.preMatch?.conditions || null,
+          detailPrompt: pre?.preMatch?.detailPrompt === true,
+        },
+      };
+      const fmt = pre?.preMatch?.format;
+      if (fmt != null) {
+        const cfg = SPORTS[sb.state.sport];
+        if (cfg?.family === 'sets') body.sets = fmt;
+        else body.games = fmt;
+      }
+      const created = await api('/api/matches', { method: 'POST', body });
+      navigate(`/match/${created.match.id}`);
+    } catch (e) {
+      setRematchError(e.message || 'Could not start the rematch');
+      setRematching(false);
+    }
+  }
+
   const details = SPORTS[sb.state?.sport]?.pointDetails || DETAIL_FALLBACK;
   const sideNames = display?.playerNames || ['Side A', 'Side B'];
   const detailEnabled = pre?.preMatch?.detailPrompt === true && !finished;
@@ -203,6 +242,22 @@ export default function MatchPage() {
         ) : (
           <span className="conn-badge connecting">Reconnecting…</span>
         )}
+      </div>
+
+      <div className="match-toolbar">
+        <Link to={`/present/${id}`} className="btn ghost">
+          📺 Present on a screen
+        </Link>
+        {finished && (
+          <button
+            className="btn primary"
+            onClick={handleRematch}
+            disabled={rematching || participants.length === 0}
+          >
+            {rematching ? 'Setting up…' : '🔁 Rematch'}
+          </button>
+        )}
+        {rematchError && <span className="form-error">{rematchError}</span>}
       </div>
 
       {chips.length > 0 && (

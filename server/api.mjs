@@ -52,6 +52,7 @@ import {
   getResetToken,
   deleteResetToken,
   clearExpiredResetTokens,
+  leaderboard,
 } from './db.mjs';
 import { initialState, apply, getDisplay, stripHistory } from '../src/lib/engine.js';
 import { SPORTS } from '../src/lib/sports.js';
@@ -478,6 +479,18 @@ export function createApi({ broadcast }) {
     const q = String(req.query.q || '').trim();
     const limit = Math.min(Number(req.query.limit) || 24, 50);
     res.json({ users: searchUsers(q, limit) });
+  });
+
+  api.get('/leaderboard', (req, res) => {
+    const sport = req.query.sport ? String(req.query.sport).slice(0, 32) : null;
+    if (sport && sport !== 'all' && !SPORTS[sport]) {
+      return res.status(400).json({ error: 'Unknown sport' });
+    }
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+    res.json({
+      sport: sport && sport !== 'all' ? sport : null,
+      players: leaderboard({ sport: sport && sport !== 'all' ? sport : null, limit }),
+    });
   });
 
   api.get('/me/live', (req, res) => {

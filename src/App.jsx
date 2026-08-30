@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, Link } from 'react-router-dom';
+import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { Component } from 'react';
 import { reportClientException } from './sentry.js';
 import { useAuth } from './context/AuthContext.jsx';
@@ -19,6 +19,8 @@ import NewTournament from './pages/NewTournament.jsx';
 import Tournament from './pages/Tournament.jsx';
 import Search from './pages/Search.jsx';
 import Legal from './pages/Legal.jsx';
+import Kiosk from './pages/Kiosk.jsx';
+import Leaderboard from './pages/Leaderboard.jsx';
 
 function CrashFallback({ resetError }) {
   return (
@@ -53,6 +55,8 @@ class ErrorBoundary extends Component {
 
 export default function App() {
   const { user, loading } = useAuth();
+  const location = useLocation();
+  const kiosk = location.pathname.startsWith('/present/');
 
   if (loading) {
     return (
@@ -63,8 +67,8 @@ export default function App() {
   }
 
   return (
-    <div className="app-wrap">
-      <Navbar />
+    <div className={`app-wrap ${kiosk ? 'kiosk-app' : ''}`}>
+      {!kiosk && <Navbar />}
       <main className="page">
         <ErrorBoundary>
           <Routes>
@@ -79,23 +83,27 @@ export default function App() {
           <Route path="/matches" element={<Feed />} />
           <Route path="/search" element={<Search />} />
           <Route path="/match/:id" element={<MatchPage />} />
+          <Route path="/present/:id" element={<Kiosk />} />
           <Route path="/player/:id" element={<PlayerPage />} />
           <Route path="/tournaments" element={<Tournaments />} />
           <Route path="/tournaments/new" element={user ? <NewTournament /> : <Navigate to="/login" replace />} />
           <Route path="/tournaments/:id" element={<Tournament />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/privacy" element={<Legal kind="privacy" />} />
           <Route path="/terms" element={<Legal kind="terms" />} />
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </ErrorBoundary>
       </main>
-      <footer className="footer">
-        <span>SportScore · real-time racquet sports scoring for friends 🎾🥒🏓</span>
-        <span className="footer-links">
-          <Link to="/privacy">Privacy</Link>
-          <Link to="/terms">Terms</Link>
-        </span>
-      </footer>
+      {!kiosk && (
+        <footer className="footer">
+          <span>SportScore · real-time racquet sports scoring for friends 🎾🥒🏓</span>
+          <span className="footer-links">
+            <Link to="/privacy">Privacy</Link>
+            <Link to="/terms">Terms</Link>
+          </span>
+        </footer>
+      )}
     </div>
   );
 }
