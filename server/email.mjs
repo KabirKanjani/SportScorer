@@ -36,6 +36,8 @@ export async function sendEmail({ to, subject, html }) {
   if (!RESEND_API_KEY) {
     return { ok: true, dev: true };
   }
+  // Bound the outbound call: a slow/blocked mail provider must never wedge the
+  // auth flows (callers treat delivery failure as a graceful devCode fallback).
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -43,6 +45,7 @@ export async function sendEmail({ to, subject, html }) {
       Authorization: `Bearer ${RESEND_API_KEY}`,
     },
     body: JSON.stringify({ from: FROM, to: [to], subject, html }),
+    signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 300);

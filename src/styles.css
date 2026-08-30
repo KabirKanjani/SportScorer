@@ -514,6 +514,18 @@ button { font-family: inherit; }
 .player-chip { display: inline-flex; align-items: center; gap: 5px; background: var(--bg-soft); border: 1px solid var(--line);
   border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--text); }
 .player-chip.me { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.partner-tag { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--accent-2); background: var(--card-2); border-radius: 6px; padding: 1px 5px; }
+.pair-box { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.pair-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 8px; }
+.pair-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pair-row select { flex: 1; min-width: 130px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--bg-soft); color: var(--text); padding: 8px 10px; font-size: 13px; }
+.pair-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.pair-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--card-2); border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; color: var(--accent-2); }
+.pair-chip button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; }
+.pair-chip button:hover { color: var(--danger); }
 .chip-seed { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; font-size: 11px;
   background: var(--card-2); color: var(--accent-2); border-radius: 6px; padding: 0 4px; }
 .copy-add { display: flex; gap: 8px; margin-top: 12px; }

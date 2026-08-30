@@ -21,6 +21,8 @@ export default function Tournament() {
   const [picks, setPicks] = useState([]);
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [pairA, setPairA] = useState('');
+  const [pairB, setPairB] = useState('');
   const aliveRef = useRef(true);
 
   const load = async (silent = false) => {
@@ -126,6 +128,33 @@ export default function Tournament() {
     }
   }
 
+  async function pair() {
+    setMsg('');
+    try {
+      const d = await api(`/api/tournaments/${id}/partners`, {
+        method: 'POST',
+        body: { playerId: Number(pairA), partnerId: Number(pairB) },
+      });
+      setT(d.tournament);
+      setPairA('');
+      setPairB('');
+      setMsg('Pairing set — they play as a team ✓');
+    } catch (e) {
+      setMsg(e.message);
+    }
+  }
+
+  async function breakPair(p) {
+    setMsg('');
+    try {
+      const d = await api(`/api/tournaments/${id}/partners/${p.id}`, { method: 'DELETE' });
+      setT(d.tournament);
+      setMsg('Pairing broken ✓');
+    } catch (e) {
+      setMsg(e.message);
+    }
+  }
+
   async function startFixture(fx) {
     try {
       const d = await api(`/api/fixtures/${fx.id}/start-match`, { method: 'POST' });
@@ -155,6 +184,16 @@ export default function Tournament() {
   const mine = useMemo(
     () => (t ? t.players.find((p) => p.id === myId) : null),
     [t, myId]
+  );
+  const teams = useMemo(
+    () => (t ? t.players.filter((p) => !p.partner || p.id < p.partner.id) : []),
+    [t]
+  );
+  const isDoubles = teams.length !== (t ? t.players.length : 0);
+  const pairOptions = useMemo(
+    () => (t && canCopyAdd ? t.players.filter((p) => !p.partner) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t]
   );
 
   if (!t) {
@@ -197,21 +236,71 @@ export default function Tournament() {
 
       <div className="tourney-field">
         <div className="panel tourney-players">
-          <div className="panel-title">Field · {t.players.length} player{t.players.length === 1 ? '' : 's'}</div>
+          <div className="panel-title">
+            {isDoubles
+              ? `Field · ${teams.length} team${teams.length === 1 ? '' : 's'} (doubles)`
+              : `Field · ${t.players.length} player${t.players.length === 1 ? '' : 's'}`}
+          </div>
           <div className="player-chips">
-            {t.players.map((p) => (
+            {teams.map((p) => (
               <Link
                 key={p.id}
                 to={`/player/${p.id}`}
-                className={`player-chip ${p.id === myId ? 'me' : ''}`}
+                className={`player-chip ${p.id === myId || p.partner?.id === myId ? 'me' : ''} ${p.partner ? 'doubles' : ''}`}
               >
-                {p.id === myId && <b>★ </b>}
+                {(p.id === myId || p.partner?.id === myId) && <b>★ </b>}
                 {p.seed ? <span className="chip-seed">{p.seed}</span> : null}
                 {p.name}
+                {p.partner ? <span className="partner-tag">DOUBLES</span> : null}
                 {p.username && <span className="username-tag">@{p.username}</span>}
               </Link>
             ))}
           </div>
+
+          {canCopyAdd && pairOptions.length >= 2 && (
+            <div className="pair-box">
+              <div className="pair-title">Doubles pairings</div>
+              <div className="pair-row">
+                <select value={pairA} onChange={(e) => setPairA(e.target.value)}>
+                  <option value="">— player 1 —</option>
+                  {pairOptions.map((p) => (
+                    <option key={p.id} value={p.id} disabled={p.id === Number(pairB)}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <select value={pairB} onChange={(e) => setPairB(e.target.value)}>
+                  <option value="">— player 2 —</option>
+                  {pairOptions.map((p) => (
+                    <option key={p.id} value={p.id} disabled={p.id === Number(pairA)}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="btn small"
+                  onClick={pair}
+                  disabled={!pairA || !pairB || pairA === pairB}
+                >
+                  Pair as team
+                </button>
+              </div>
+              {teams.filter((p) => p.partner).length > 0 && (
+                <div className="pair-list">
+                  {teams
+                    .filter((p) => p.partner)
+                    .map((p) => (
+                      <span key={p.id} className="pair-chip">
+                        {p.name}
+                        <button type="button" onClick={() => breakPair(p)}>
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {canCopyAdd && (
             <div className="add-players">
@@ -271,8 +360,9 @@ export default function Tournament() {
 
           {t.status === 'draft' && (
             <p className="muted small" style={{ marginTop: 10 }}>
-              The draw is automatic: when you start, everyone is randomly seeded into a knockout
-              bracket — byes handled for you.
+              {isDoubles
+                ? 'Pairings are locked into the draw: each team is one bracket entry and bracket matches are scored as doubles.'
+                : 'The draw is automatic: when you start, everyone is randomly seeded into a knockout bracket — byes handled for you. Use the pairings box above to play doubles.'}
             </p>
           )}
         </div>
@@ -280,10 +370,14 @@ export default function Tournament() {
         {canStart && (
           <div className="panel draw-box">
             <div className="panel-title">Ready to draw?</div>
-            <button className="btn primary big" onClick={start} disabled={t.players.length < 2}>
+            <button
+              className="btn primary big"
+              onClick={start}
+              disabled={teams.length < 2}
+            >
               🎲 Make the bracket
             </button>
-            <p className="muted small">Needs at least 2 players.</p>
+            <p className="muted small">Needs at least 2 {isDoubles ? 'teams' : 'players'}.</p>
           </div>
         )}
         {canJoin && (

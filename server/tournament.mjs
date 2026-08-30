@@ -4,6 +4,7 @@
 import { randomBytes } from 'node:crypto';
 import {
   getTournamentPlayers,
+  getTournamentSeeds,
   getTournamentById,
   getFixtures,
   getFixtureById,
@@ -36,8 +37,10 @@ function shuffle(arr) {
 }
 
 // Random draw + full fixture tree for a draft tournament. Returns roundSize.
+// Seeds come from getTournamentSeeds: one entry per team (doubles pairs
+// collapse to their captain).
 export function buildBracket(tournamentId) {
-  const players = getTournamentPlayers(tournamentId);
+  const players = getTournamentSeeds(tournamentId);
   const n = players.length;
   const roundSize = nextPowerOfTwo(n);
   const rounds = roundCount(roundSize);
@@ -143,11 +146,18 @@ function finishDecision(tournamentId, winnerUserId, winningFixture) {
   const name = t?.name || 'Tournament';
   if (tree.champion) {
     setTournamentWinner(tournamentId, tree.champion.id);
+    const champPlayer = getTournamentPlayers(tournamentId).find(
+      (p) => p.userId === tree.champion.id
+    );
+    const champLabel =
+      champPlayer?.partnerId && champPlayer.partnerName
+        ? `${champPlayer.name} & ${champPlayer.partnerName}`
+        : tree.champion.name;
     for (const p of getTournamentPlayers(tournamentId)) {
       notify(p.userId, {
         type: 'tournament',
         title: 'Tournament finished',
-        body: `${tree.champion.name} is champion of ${name} 🏆`,
+        body: `${champLabel} is champion of ${name} 🏆`,
         link: `/tournaments/${tournamentId}`,
       });
     }

@@ -112,6 +112,7 @@ db.exec(`
     user_id       INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
     seed          INTEGER,
     entered_at    TEXT NOT NULL,
+    partner_id    INTEGER REFERENCES user(id),
     PRIMARY KEY (tournament_id, user_id)
   );
 
@@ -198,6 +199,14 @@ db.exec(`
   // A unique index matters more than a column constraint here: real platforms
   // migrate pre-existing tables, and SQLite forbids ADD COLUMN ... UNIQUE.
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_user_username ON user(username)');
+}
+
+// Migration for databases created before doubles play existed.
+{
+  const tcols = db.prepare('PRAGMA table_info(tournament_player)').all();
+  if (!tcols.some((c) => c.name === 'partner_id')) {
+    db.exec('ALTER TABLE tournament_player ADD COLUMN partner_id INTEGER REFERENCES user(id)');
+  }
 }
 
 // Pre-match data (toss, venue, court, conditions, "started" gate). Matches
@@ -960,29 +969,91 @@ export function searchTournaments(q, userId, limit = 30) {
 export function getTournamentPlayers(tournamentId) {
   return db
     .prepare(
-      `SELECT tp.user_id AS userId, tp.seed AS seed, u.name AS name, u.username AS username, u.avatar AS avatar, u.email_verified AS emailVerified
+      `SELECT tp.user_id AS userId, tp.seed AS seed, u.name AS name, u.username AS username, u.avatar AS avatar, u.email_verified AS emailVerified,
+              tp.partner_id AS partnerId, pu.name AS partnerName, pu.username AS partnerUsername, pu.avatar AS partnerAvatar
        FROM tournament_player tp JOIN user u ON u.id = tp.user_id
+       LEFT JOIN user pu ON pu.id = tp.partner_id
        WHERE tp.tournament_id = ?
        ORDER BY (tp.seed IS NULL), tp.seed ASC, tp.entered_at ASC`
     )
     .all(tournamentId);
 }
 
-export function addTournamentPlayer(tournamentId, userId) {
+// One bracket entry per team: singles are entries, and each pairing collapses
+// to its captain (the participant with the lower id).
+export function getTournamentSeeds(tournamentId) {
+  const players = getTournamentPlayers(tournamentId);
+  const isPartner = (p) => players.some((q) => q.partnerId === p.userId);
+  return players.filter((p) => !p.partnerId || p.userId < p.partnerId || !isPartner(p));
+}
+
+export function addTournamentPlayer(tournamentId, userId, partnerId = null) {
   const info = db
     .prepare(
-      `INSERT OR IGNORE INTO tournament_player (tournament_id, user_id, entered_at)
-       VALUES (?, ?, ?)`
+      `INSERT OR IGNORE INTO tournament_player (tournament_id, user_id, entered_at, partner_id)
+       VALUES (?, ?, ?, ?)`
     )
-    .run(tournamentId, userId, new Date().toISOString());
+    .run(tournamentId, userId, new Date().toISOString(), partnerId);
   return info.changes > 0;
 }
 
+// Doubles: link an existing participant as another participant's partner.
+// Each player may be part of one pairing only.
+export function setTournamentPartner(tournamentId, userId, partnerId) {
+  db.exec('BEGIN');
+  try {
+    if (userId === partnerId) throw new Error('A player cannot partner themselves');
+    for (const pid of [userId, partnerId]) {
+      if (!isTournamentPlayer(tournamentId, pid)) throw new Error('Partner must be in the tournament');
+    }
+    db.prepare(
+      'UPDATE tournament_player SET partner_id = NULL WHERE tournament_id = ? AND (partner_id = ? OR partner_id = ?)'
+    ).run(tournamentId, userId, partnerId);
+    db.prepare(
+      'UPDATE tournament_player SET partner_id = ? WHERE tournament_id = ? AND user_id = ?'
+    ).run(partnerId, tournamentId, userId);
+    db.prepare(
+      'UPDATE tournament_player SET partner_id = ? WHERE tournament_id = ? AND user_id = ?'
+    ).run(userId, tournamentId, partnerId);
+    db.exec('COMMIT');
+    return true;
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+export function clearTournamentPartner(tournamentId, userId) {
+  const row = db
+    .prepare('SELECT partner_id AS pid FROM tournament_player WHERE tournament_id = ? AND user_id = ?')
+    .get(tournamentId, userId);
+  db.prepare(
+    'UPDATE tournament_player SET partner_id = NULL WHERE tournament_id = ? AND (user_id = ? OR partner_id = ?)'
+  ).run(tournamentId, userId, row?.pid ?? -1);
+  return true;
+}
+
+export function isDoublesTournament(tournamentId) {
+  const row = db
+    .prepare('SELECT COUNT(*) AS n FROM tournament_player WHERE tournament_id = ? AND partner_id IS NOT NULL')
+    .get(tournamentId);
+  return row.n > 0;
+}
+
 export function removeTournamentPlayer(tournamentId, userId) {
-  db.prepare(`DELETE FROM tournament_player WHERE tournament_id = ? AND user_id = ?`).run(
-    tournamentId,
-    userId
-  );
+  db.exec('BEGIN');
+  try {
+    clearTournamentPartner(tournamentId, userId);
+    db.prepare(`DELETE FROM tournament_player WHERE tournament_id = ? AND user_id = ?`).run(
+      tournamentId,
+      userId
+    );
+    db.exec('COMMIT');
+    return true;
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }
 
 export function isTournamentPlayer(tournamentId, userId) {
@@ -1047,15 +1118,30 @@ export function getFixtureById(id) {
 }
 
 export function getFixtures(tournamentId) {
-  return db
+  const rows = db
     .prepare(`SELECT * FROM fixture WHERE tournament_id = ? ORDER BY round, position`)
-    .all(tournamentId)
-    .map((f) => ({
-      ...f,
-      player1: f.player1_id ? getUserById(f.player1_id) : null,
-      player2: f.player2_id ? getUserById(f.player2_id) : null,
-      winner: f.winner_id ? getUserById(f.winner_id) : null,
-    }));
+    .all(tournamentId);
+  const PARTNER = (pid) =>
+    db.prepare(`SELECT partner_id AS pid FROM tournament_player WHERE tournament_id = ? AND user_id = ?`).get(tournamentId, pid);
+  const team = (pid) => {
+    if (pid == null) return null;
+    const t = PARTNER(pid);
+    const partner = t?.pid ? getUserById(t.pid) : null;
+    const cap = getUserById(pid);
+    if (!cap) return null;
+    return {
+      ...cap,
+      name: partner ? `${cap.name} & ${partner.name}` : cap.name,
+      partner,
+      primaryName: cap.name,
+    };
+  };
+  return rows.map((f) => ({
+    ...f,
+    player1: team(f.player1_id),
+    player2: team(f.player2_id),
+    winner: f.winner_id ? getUserById(f.winner_id) : null,
+  }));
 }
 
 export function getFixtureByMatch(matchId) {

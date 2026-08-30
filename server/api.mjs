@@ -37,6 +37,9 @@ import {
   searchTournaments,
   getTournamentPlayers,
   addTournamentPlayer,
+  setTournamentPartner,
+  clearTournamentPartner,
+  getTournamentSeeds,
   isTournamentPlayer,
   isTournamentCreator,
   setTournamentStatus,
@@ -261,6 +264,16 @@ export async function processMatchAction(matchId, action, user, broadcast = () =
     if (next.error) return next;
     liveStates.set(matchId, next);
     saveMatchState(matchId, stripHistory(next), { finish: next.matchOver });
+    try {
+      finishMatchContinuation(matchId, next, before, user, action, broadcast);
+    } catch (e) {
+      console.error('[match-action] continuation failed:', e && e.stack ? e.stack : e);
+    }
+    return { state: next, status: next.matchOver ? 'finished' : 'live' };
+  });
+}
+
+function finishMatchContinuation(matchId, next, before, user, action, broadcast) {
 
     // If this match belongs to a tournament fixture, record who won and crown
     // a champion once the final is done.
@@ -310,8 +323,6 @@ export async function processMatchAction(matchId, action, user, broadcast = () =
     }
     broadcast(`match:${matchId}`);
     broadcast('feed');
-    return { state: next, status: next.matchOver ? 'finished' : 'live' };
-  });
 }
 
 function runAction(state, action) {
@@ -832,15 +843,19 @@ export function createApi({ broadcast }) {
   const summarizeTournament = (t, viewer) => {
     const players = getTournamentPlayers(t.id).map((p) => ({
       id: p.userId,
-      name: p.name,
+      name: p.partnerId ? `${p.name} & ${p.partnerName}` : p.name,
       username: p.username,
       avatar: p.avatar,
       seed: p.seed,
+      partner: p.partnerId
+        ? { id: p.partnerId, name: p.partnerName, username: p.partnerUsername, avatar: p.partnerAvatar }
+        : null,
     }));
     const view =
       t.status === 'draft' ? null : fixtureView(t.id, getFixtures(t.id));
     const isCreator = viewer && isTournamentCreator(t.id, viewer.id);
     const isPlayer = viewer && isTournamentPlayer(t.id, viewer.id);
+    const teams = getTournamentSeeds(t.id);
     return {
       id: t.id,
       name: t.name,
@@ -851,11 +866,17 @@ export function createApi({ broadcast }) {
       status: t.status,
       createdAt: t.created_at,
       creator: { id: t.creator?.id, name: t.creator?.name, username: t.creator?.username },
-      winner: t.winner ? { id: t.winner.id, name: t.winner.name } : null,
+      winner: t.winner
+        ? { id: t.winner.id, name: players.find((p) => p.id === t.winner.id)?.name || t.winner.name }
+        : null,
       players,
       rounds: view ? view.rounds : [],
-      champion: view ? view.champion : null,
-      canStart: t.status === 'draft' && isCreator && players.length >= 2,
+      champion: (() => {
+        const c = view ? view.champion : null;
+        if (!c) return null;
+        return { id: c.id, name: players.find((p) => p.id === c.id)?.name || c.name };
+      })(),
+      canStart: t.status === 'draft' && isCreator && teams.length >= 2,
       canJoin: t.status === 'draft' && viewer && !isPlayer,
       myRole: isCreator ? 'creator' : isPlayer ? 'player' : null,
     };
@@ -925,6 +946,43 @@ export function createApi({ broadcast }) {
       added: added.map((u) => ({ id: u.id, name: u.name, username: u.username })),
       invalid,
     });
+  });
+
+  // Doubles: creator links two participants into a pairing (draft only).
+  api.post('/tournaments/:id/partners', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const t = getTournamentById(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'Tournament not found' });
+    if (!isTournamentCreator(t.id, req.user.id)) {
+      return res.status(403).json({ error: 'Only the creator can set pairings' });
+    }
+    if (t.status !== 'draft') {
+      return res.status(400).json({ error: 'The draw already started' });
+    }
+    const playerId = Number(req.body?.playerId);
+    const partnerId = Number(req.body?.partnerId);
+    if (!playerId || !partnerId) return res.status(400).json({ error: 'Pick two participants' });
+    try {
+      setTournamentPartner(t.id, playerId, partnerId);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+    res.json({ tournament: summarizeTournament(getTournamentById(t.id), req.user) });
+  });
+
+  // Doubles: break a pairing, back to singles (draft only).
+  api.delete('/tournaments/:id/partners/:playerId', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const t = getTournamentById(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'Tournament not found' });
+    if (!isTournamentCreator(t.id, req.user.id)) {
+      return res.status(403).json({ error: 'Only the creator can adjust pairings' });
+    }
+    if (t.status !== 'draft') {
+      return res.status(400).json({ error: 'The draw already started' });
+    }
+    clearTournamentPartner(t.id, Number(req.params.playerId));
+    res.json({ tournament: summarizeTournament(getTournamentById(t.id), req.user) });
   });
 
   // A logged-in user joins by themselves (draft only).
@@ -997,8 +1055,12 @@ export function createApi({ broadcast }) {
     const id = randomUUID();
     const state = initialState(t.sport, [a.name, b.name]);
     createMatch({ id, sport: t.sport, state: stripHistory(state), createdBy: req.user.id });
-    addMatchPlayer(id, a.id, 0, 0);
-    addMatchPlayer(id, b.id, 1, 0);
+    const addSide = (user, side) => {
+      addMatchPlayer(id, user.id, side, 0);
+      if (user.partner) addMatchPlayer(id, user.partner.id, side, 1);
+    };
+    addSide(a, 0);
+    addSide(b, 1);
     addScorer(id, req.user.id); // whoever opened it scores it
     addEvent(id, `${SPORTS[t.sport].name} · ${t.name} bracket match`, req.user.id);
     setFixtureMatch(fx.id, id);
