@@ -135,6 +135,20 @@ export default function Tournament() {
     }
   }
 
+  async function walkover(fx, winnerId) {
+    setMsg('');
+    try {
+      const d = await api(`/api/fixtures/${fx.id}/walkover`, {
+        method: 'POST',
+        body: { winner: winnerId },
+      });
+      setT(d.tournament);
+      setMsg('Walkover awarded — the player advances ✓');
+    } catch (e) {
+      setMsg(e.message);
+    }
+  }
+
   const openFixture = (matchId) => nav(`/match/${matchId}`);
 
   const myId = user?.id;
@@ -292,6 +306,7 @@ export default function Tournament() {
             canStart={t.myRole === 'creator' || t.myRole === 'player'}
             onStartMatch={startFixture}
             onOpenMatch={openFixture}
+            onWalkover={t.myRole === 'creator' && t.status === 'live' ? walkover : null}
           />
           {t.status === 'finished' && t.champion && (
             <div className="winner-banner">👑 {t.champion.name} is the champion!</div>

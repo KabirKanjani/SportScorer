@@ -61,7 +61,7 @@ function computeLayout(rounds) {
   return { roundSize, H, spots, lines, width: rounds.length * COLW + GUT };
 }
 
-export default function Bracket({ rounds, champion, sport, canStart, onStartMatch, onOpenMatch }) {
+export default function Bracket({ rounds, champion, sport, canStart, onStartMatch, onOpenMatch, onWalkover }) {
   const layout = useMemo(() => computeLayout(rounds), [rounds]);
   const last = rounds.length;
   const crownGap = 26;
@@ -104,6 +104,7 @@ export default function Bracket({ rounds, champion, sport, canStart, onStartMatc
                 canStart={canStart}
                 onStartMatch={onStartMatch}
                 onOpenMatch={onOpenMatch}
+                onWalkover={onWalkover}
               />
             );
           })
@@ -128,13 +129,14 @@ export default function Bracket({ rounds, champion, sport, canStart, onStartMatc
   );
 }
 
-function FixtureCard({ f, sport, x, y, isFinal, canStart, onStartMatch, onOpenMatch }) {
+function FixtureCard({ f, sport, x, y, isFinal, canStart, onStartMatch, onOpenMatch, onWalkover }) {
   const rows = [
     { p: f.player1, isLoser: f.winner && f.player1 && f.winner.id !== f.player1.id },
     { p: f.player2, isLoser: f.winner && f.player2 && f.winner.id !== f.player2.id },
   ];
   const clickable = !!f.matchId;
   const playable = !f.matchId && f.player1 && f.player2 && f.status === 'scheduled';
+  const short = (name) => (name.length > 14 ? `${name.slice(0, 13)}…` : name);
 
   const inner = (
     <>
@@ -185,6 +187,21 @@ function FixtureCard({ f, sport, x, y, isFinal, canStart, onStartMatch, onOpenMa
           if (onStartMatch) onStartMatch(f);
         }}>
           Start ▶
+        </span>
+      )}
+      {playable && onWalkover && (
+        <span className="fx-wo" onClick={(e) => e.stopPropagation()}>
+          {[f.player1, f.player2].map((p, i) => (
+            <button
+              key={i}
+              type="button"
+              className="fx-wo-btn"
+              title="Award a walkover — the other player forfeits"
+              onClick={() => onWalkover(f, p.id)}
+            >
+              WO {short(p.name)} →
+            </button>
+          ))}
         </span>
       )}
     </div>

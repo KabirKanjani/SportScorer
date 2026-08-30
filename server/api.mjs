@@ -60,7 +60,7 @@ import {
 } from './db.mjs';
 import { initialState, apply, getDisplay, stripHistory } from '../src/lib/engine.js';
 import { SPORTS } from '../src/lib/sports.js';
-import { buildBracket, fixtureView, onFixtureMatchFinished } from './tournament.mjs';
+import { buildBracket, fixtureView, onFixtureMatchFinished, resolveFixtureWalkover } from './tournament.mjs';
 import {
   attachUser,
   registerRoute,
@@ -1003,6 +1003,32 @@ export function createApi({ broadcast }) {
     addEvent(id, `${SPORTS[t.sport].name} · ${t.name} bracket match`, req.user.id);
     setFixtureMatch(fx.id, id);
     res.json({ matchId: id, tournament: summarizeTournament(getTournamentById(t.id), req.user) });
+  });
+
+  // Creator-only: award a playable fixture by walkover/forfeit (manual advance).
+  // Nothing to score — the chosen player simply moves on.
+  api.post('/fixtures/:id/walkover', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const fx = getFixtureById(Number(req.params.id));
+    if (!fx) return res.status(404).json({ error: 'Fixture not found' });
+    const t = getTournamentById(fx.tournament_id);
+    if (!t) return res.status(404).json({ error: 'Tournament not found' });
+    if (t.status !== 'live') {
+      return res.status(400).json({ error: 'Tournament is not live' });
+    }
+    if (!isTournamentCreator(t.id, req.user.id)) {
+      return res.status(403).json({ error: 'Only the creator can award a walkover' });
+    }
+    if (fx.status !== 'scheduled' || fx.match_id) {
+      return res.status(400).json({ error: 'This fixture already has a match or result' });
+    }
+    const winnerId = Number(req.body?.winner);
+    if (winnerId !== fx.player1_id && winnerId !== fx.player2_id) {
+      return res.status(400).json({ error: 'winner must be one of the two players' });
+    }
+    const loserId = winnerId === fx.player1_id ? fx.player2_id : fx.player1_id;
+    resolveFixtureWalkover(t.id, fx.id, winnerId, loserId);
+    res.json({ tournament: summarizeTournament(getTournamentById(t.id), req.user) });
   });
 
   return api;

@@ -579,6 +579,10 @@ button { font-family: inherit; }
 .fx-final-tag { text-align: center; font-size: 12px; font-weight: 800; color: var(--gold); }
 .fx-start { position: absolute; top: 4px; right: 6px; font-size: 11px; font-weight: 800; color: #fff;
   background: var(--accent); border-radius: 999px; padding: 2px 9px; }
+.fx-wo { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+.fx-wo-btn { font-size: 10px; font-weight: 700; color: var(--muted); background: var(--card-2);
+  border: 1px dashed var(--line-2); border-radius: 7px; padding: 1px 6px; cursor: pointer; text-align: left; }
+.fx-wo-btn:hover { color: var(--accent-2); border-color: var(--accent); }
 .court-champ { position: absolute; z-index: 1; background: linear-gradient(135deg, #fdf3d7, #f6e5a2);
   border: 1px solid var(--gold); border-radius: 12px; padding: 10px 12px; box-sizing: border-box;
   display: flex; flex-direction: column; align-items: center; gap: 4px; color: #8a5b05; text-align: center; }

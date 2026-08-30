@@ -6,6 +6,7 @@ import {
   getTournamentPlayers,
   getTournamentById,
   getFixtures,
+  getFixtureById,
   setTournamentPlayerSeed,
   setTournamentWinner,
   getFixtureByMatch,
@@ -134,16 +135,10 @@ export function fixtureView(tournamentId, fixtures) {
   return { rounds: tree, champion: final ? final.winner : null };
 }
 
-// Called after a linked match finishes: record the winner and crown a champion
-// if this was the final. Also pings the players whose next-round fixture just
-// became playable.
-export function onFixtureMatchFinished(matchId, winnerUserId) {
-  const f = getFixtureByMatch(matchId);
-  if (!f) return null;
-  resolveFixtureWinner(f.id, winnerUserId);
-  const tournamentId = f.tournament_id;
-  const fixtures = getFixtures(tournamentId);
-  const tree = fixtureView(tournamentId, fixtures);
+// Shared post-decision bookkeeping: crown a champion / ping the players whose
+// next-round fixture just became playable (via a finished match OR a walkover).
+function finishDecision(tournamentId, winnerUserId, winningFixture) {
+  const tree = fixtureView(tournamentId, getFixtures(tournamentId));
   const t = getTournamentById(tournamentId);
   const name = t?.name || 'Tournament';
   if (tree.champion) {
@@ -156,26 +151,55 @@ export function onFixtureMatchFinished(matchId, winnerUserId) {
         link: `/tournaments/${tournamentId}`,
       });
     }
-  } else {
-    // The fixtures in the next round that were waiting on this winner.
-    const nexts = fixtures.filter(
-      (x) =>
-        x.round === f.round + 1 &&
-        x.status === 'scheduled' &&
-        x.player1_id &&
-        x.player2_id &&
-        (x.player1_id === winnerUserId || x.player2_id === winnerUserId)
-    );
-    for (const n of nexts) {
-      for (const pid of [n.player1_id, n.player2_id]) {
+  } else if (winningFixture) {
+    // The fixture in the next round that was waiting on this winner.
+    const parentNode = tree.rounds
+      .find((r) => r.round === winningFixture.round + 1)
+      ?.fixtures.find(
+        (x) => x.player1 && x.player2 && (x.player1.id === winnerUserId || x.player2.id === winnerUserId)
+      );
+    if (parentNode) {
+      for (const pid of [parentNode.player1.id, parentNode.player2.id]) {
         notify(pid, {
           type: 'tournament',
           title: 'Your match is up',
-          body: `${name} · round ${n.round} is ready`,
+          body: `${name} · round ${parentNode.round} is ready`,
           link: `/tournaments/${tournamentId}`,
         });
       }
     }
+  }
+}
+
+// Called after a linked match finishes: record the winner and crown a champion
+// if this was the final.
+export function onFixtureMatchFinished(matchId, winnerUserId) {
+  const f = getFixtureByMatch(matchId);
+  if (!f) return null;
+  resolveFixtureWinner(f.id, winnerUserId);
+  const tournamentId = f.tournament_id;
+  finishDecision(tournamentId, winnerUserId, f);
+  return tournamentId;
+}
+
+// Creator-driven forfeit / walkover: advance one of the two players without a
+// live match. Same post-decision path as a finished match.
+export function resolveFixtureWalkover(tournamentId, fixtureId, winnerUserId, loserUserId) {
+  const f = getFixtureById(fixtureId);
+  if (!f) return null;
+  resolveFixtureWinner(fixtureId, winnerUserId);
+  finishDecision(tournamentId, winnerUserId, f);
+  const tname = getTournamentById(tournamentId)?.name || 'Tournament';
+  for (const pid of [winnerUserId, loserUserId]) {
+    notify(pid, {
+      type: 'tournament',
+      title: pid === winnerUserId ? 'Walkover — you advance' : 'Walkover — eliminated',
+      body:
+        pid === winnerUserId
+          ? `${tname} · walkover in round ${f.round} — you move on`
+          : `${tname} · walkover in round ${f.round} — eliminated`,
+      link: `/tournaments/${tournamentId}`,
+    });
   }
   return tournamentId;
 }
