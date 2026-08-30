@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, Link } from 'react-router-dom';
 import { Component } from 'react';
+import { reportClientException } from './sentry.js';
 import { useAuth } from './context/AuthContext.jsx';
 import Navbar from './components/Navbar.jsx';
 import Landing from './pages/Landing.jsx';
@@ -42,9 +43,7 @@ class ErrorBoundary extends Component {
     return { error };
   }
   componentDidCatch(error, info) {
-    window.Sentry?.captureException(error, {
-      extra: { componentStack: info?.componentStack },
-    });
+    reportClientException(error, { extra: { componentStack: info?.componentStack } });
   }
   render() {
     if (this.state.error) return <CrashFallback resetError={() => this.setState({ error: null })} />;

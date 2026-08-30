@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { tagSentryUser } from '../sentry.js';
 import { api } from '../api.js';
 
 const AuthContext = createContext(null);
@@ -16,11 +17,7 @@ export function AuthProvider({ children }) {
 
   // Tag errors with the signed-in player when we know them (via Sentry loader).
   useEffect(() => {
-    if (user) {
-      window.Sentry?.setUser({ id: String(user.id), email: user.email, username: user.username || undefined });
-    } else {
-      window.Sentry?.setUser(null);
-    }
+    tagSentryUser(user);
   }, [user]);
 
   const login = useCallback(async (email, password) => {

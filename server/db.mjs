@@ -344,6 +344,21 @@ export function getUserById(id) {
   return db.prepare(`SELECT * FROM user WHERE id = ?`).get(id);
 }
 
+// Ids + last-modified dates for the SEO sitemap. Capped so the XML stays small
+// on every scale; sitemaps above ~10k URLs aren't crawled faster anyway.
+export function listSitemapEntries() {
+  const users = db
+    .prepare(`SELECT id, created_at AS lastmod FROM user ORDER BY id ASC LIMIT 5000`)
+    .all();
+  const matches = db
+    .prepare(`SELECT id, updated_at AS lastmod FROM match ORDER BY id ASC LIMIT 5000`)
+    .all();
+  const tournaments = db
+    .prepare(`SELECT id, created_at AS lastmod FROM tournament WHERE visibility = 'public' ORDER BY id ASC LIMIT 5000`)
+    .all();
+  return { users, matches, tournaments };
+}
+
 export function searchUsers(q, limit = 8) {
   if (!q) {
     return db

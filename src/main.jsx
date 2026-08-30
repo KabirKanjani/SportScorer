@@ -3,28 +3,12 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
-import { API_BASE } from './api.js';
+import { bootSentry } from './sentry.js';
 import './styles.css';
 
-// Client error tracking via the Sentry loader mounted in index.html. The loader
-// exposes a buffering window.Sentry immediately, so a fire-and-forget init here
-// is safe: init options apply once the real SDK finishes loading. No DSN is
-// needed — the loader carries the client key.
-async function initSentry() {
-  try {
-    const res = await fetch(API_BASE + '/api/sentry/config', { credentials: 'include' });
-    const cfg = await res.json();
-    window.Sentry?.init({
-      environment: cfg?.environment || 'development',
-      release: cfg?.release || undefined,
-      tracesSampleRate: 0.05,
-    });
-  } catch {
-    /* offline or not configured — skip */
-  }
-}
-
-initSentry();
+// Client error tracking via the Sentry loader in index.html. Fire-and-forget:
+// queued until the SDK reports ready, never blocks first paint.
+bootSentry();
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
@@ -34,3 +18,9 @@ createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </React.StrictMode>
 );
+
+// PWA installability: a network pass-through worker so the app can be "Added to
+// Home Screen" without ever serving stale assets from a cache.
+if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}

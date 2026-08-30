@@ -4,8 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#2563eb" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="description" content="SportScore — the free real-time scoreboard for tennis, padel, pickleball, table tennis, squash and badminton." />
     <title>SportScore — Real-Time Racquet Sports Scoreboard</title>
+
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "SportScore",
+        "url": "https://sportscore.onrender.com/",
+        "description": "The free real-time scoreboard for tennis, padel, pickleball, table tennis, squash and badminton."
+      }
+    </script>
 
     <!-- Sentry browser loader (lazy: the SDK is fetched on first use). -->
     <script

@@ -18,7 +18,7 @@ import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 
 import { createApi, processMatchAction, matchSummary } from './api.mjs';
-import { getMatch, getEvents, getUserBySession, getUserById, getTournamentById, canScore } from './db.mjs';
+import { getMatch, getEvents, getUserBySession, getUserById, getTournamentById, canScore, listSitemapEntries } from './db.mjs';
 import { seedSampleUsers } from './seed.mjs';
 import { stripHistory } from '../src/lib/engine.js';
 import { SPORTS } from '../src/lib/sports.js';
@@ -210,6 +210,46 @@ function injectPreviewMeta(html, pathname) {
     .replace(/property="og:url" content="[^"]*"/, `property="og:url" content="${esc(url)}"`);
 }
 
+// Robots + SEO sitemap. The sitemap is generated per request so it always
+// reflects live tournaments/players without a cron. Static pages are listed
+// first; dynamic URLs (public tournaments, matches, players) follow, capped to
+// keep the XML small.
+app.get('/robots.txt', (_req, res) => {
+  res.type('text/plain');
+  res.send(
+    ['User-agent: *', 'Allow: /', '', `Sitemap: ${SITE}/sitemap.xml`, ''].join('\n')
+  );
+});
+
+app.get('/sitemap.xml', (_req, res) => {
+  const esc = (s) =>
+    String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  const entry = (loc, lastmod, priority) =>
+    `  <url><loc>${esc(loc)}</loc><lastmod>${esc(lastmod)}</lastmod><changefreq>daily</changefreq><priority>${priority}</priority></url>`;
+  const today = new Date().toISOString().slice(0, 10);
+  const { users, matches, tournaments } = listSitemapEntries();
+  const lines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    entry(`${SITE}/`, today, '1.0'),
+    entry(`${SITE}/matches`, today, '0.8'),
+    entry(`${SITE}/search`, today, '0.6'),
+    entry(`${SITE}/privacy`, today, '0.3'),
+    entry(`${SITE}/terms`, today, '0.3'),
+    ...tournaments.map((t) => entry(`${SITE}/tournaments/${t.id}`, String(t.lastmod).slice(0, 10) || today, '0.8')),
+    ...matches.map((m) => entry(`${SITE}/match/${m.id}`, String(m.lastmod).slice(0, 10) || today, '0.7')),
+    ...users.map((u) => entry(`${SITE}/player/${u.id}`, String(u.lastmod).slice(0, 10) || today, '0.6')),
+    '</urlset>',
+  ];
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.send(lines.join('\n'));
+});
+
 // Static files (production build)
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -222,6 +262,7 @@ const MIME = {
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
+  '.webmanifest': 'application/manifest+json',
 };
 
 app.use(async (req, res) => {
@@ -257,6 +298,12 @@ app.use(async (req, res) => {
     if (pathname.startsWith('/assets/')) {
       // Hashed, immutable build artifacts.
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (pathname === '/sw.js') {
+      // Service worker should never be cached: a stale worker could control
+      // the page off an old version.
+      res.setHeader('Cache-Control', 'no-cache');
+    } else if (pathname.startsWith('/icons/') || pathname === '/manifest.webmanifest') {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
     }
     res.send(body);
   } catch (e) {

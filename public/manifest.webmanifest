@@ -1,0 +1,16 @@
+{
+  "name": "SportScore — Real-Time Racquet Sports Scoreboard",
+  "short_name": "SportScore",
+  "description": "Score matches point by point, live. Tennis, padel, pickleball, table tennis, squash and badminton.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b1120",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
