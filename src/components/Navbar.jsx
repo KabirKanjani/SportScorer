@@ -1,6 +1,7 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import Avatar from './Avatar.jsx';
+import NotificationsBell from './NotificationsBell.jsx';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -29,6 +30,7 @@ export default function Navbar() {
           </NavLink>
           {user && (
             <>
+              <NotificationsBell />
               <NavLink to="/dashboard" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
                 My Matches
               </NavLink>

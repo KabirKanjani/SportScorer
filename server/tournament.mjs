@@ -4,12 +4,14 @@
 import { randomBytes } from 'node:crypto';
 import {
   getTournamentPlayers,
+  getTournamentById,
   getFixtures,
   setTournamentPlayerSeed,
   setTournamentWinner,
   getFixtureByMatch,
   resolveFixtureWinner,
   createFixture,
+  notify,
 } from './db.mjs';
 
 export function nextPowerOfTwo(n) {
@@ -133,7 +135,8 @@ export function fixtureView(tournamentId, fixtures) {
 }
 
 // Called after a linked match finishes: record the winner and crown a champion
-// if this was the final.
+// if this was the final. Also pings the players whose next-round fixture just
+// became playable.
 export function onFixtureMatchFinished(matchId, winnerUserId) {
   const f = getFixtureByMatch(matchId);
   if (!f) return null;
@@ -141,8 +144,38 @@ export function onFixtureMatchFinished(matchId, winnerUserId) {
   const tournamentId = f.tournament_id;
   const fixtures = getFixtures(tournamentId);
   const tree = fixtureView(tournamentId, fixtures);
+  const t = getTournamentById(tournamentId);
+  const name = t?.name || 'Tournament';
   if (tree.champion) {
     setTournamentWinner(tournamentId, tree.champion.id);
+    for (const p of getTournamentPlayers(tournamentId)) {
+      notify(p.userId, {
+        type: 'tournament',
+        title: 'Tournament finished',
+        body: `${tree.champion.name} is champion of ${name} 🏆`,
+        link: `/tournaments/${tournamentId}`,
+      });
+    }
+  } else {
+    // The fixtures in the next round that were waiting on this winner.
+    const nexts = fixtures.filter(
+      (x) =>
+        x.round === f.round + 1 &&
+        x.status === 'scheduled' &&
+        x.player1_id &&
+        x.player2_id &&
+        (x.player1_id === winnerUserId || x.player2_id === winnerUserId)
+    );
+    for (const n of nexts) {
+      for (const pid of [n.player1_id, n.player2_id]) {
+        notify(pid, {
+          type: 'tournament',
+          title: 'Your match is up',
+          body: `${name} · round ${n.round} is ready`,
+          link: `/tournaments/${tournamentId}`,
+        });
+      }
+    }
   }
   return tournamentId;
 }

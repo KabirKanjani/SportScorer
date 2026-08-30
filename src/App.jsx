@@ -21,6 +21,7 @@ import Search from './pages/Search.jsx';
 import Legal from './pages/Legal.jsx';
 import Kiosk from './pages/Kiosk.jsx';
 import Leaderboard from './pages/Leaderboard.jsx';
+import Notifications from './pages/Notifications.jsx';
 
 function CrashFallback({ resetError }) {
   return (
@@ -89,6 +90,7 @@ export default function App() {
           <Route path="/tournaments/new" element={user ? <NewTournament /> : <Navigate to="/login" replace />} />
           <Route path="/tournaments/:id" element={<Tournament />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/notifications" element={user ? <Notifications /> : <Navigate to="/login" replace />} />
           <Route path="/privacy" element={<Legal kind="privacy" />} />
           <Route path="/terms" element={<Legal kind="terms" />} />
           <Route path="*" element={<Navigate to="/" replace />} />

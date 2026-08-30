@@ -48,6 +48,10 @@ import {
   setFixtureMatch,
   resolveFixtureWinner,
   setUserPassword,
+  notify,
+  listNotifications,
+  unreadNotifications,
+  markNotificationsRead,
   saveResetToken,
   getResetToken,
   deleteResetToken,
@@ -264,6 +268,19 @@ export async function processMatchAction(matchId, action, user, broadcast = () =
       const m = getMatch(matchId);
       const win = m?.players.find((p) => p.side === next.winnerIdx);
       if (win) onFixtureMatchFinished(matchId, win.userId);
+      // Notify everyone listed on the match that it wrapped up.
+      const winner = next.playerNames[next.winnerIdx];
+      const counts = getDisplay(next).setCounts;
+      const fam = SPORTS[next.sport]?.family === 'sets' ? 'sets' : 'games';
+      const score = counts && Number(counts[0]) + Number(counts[1]) > 0 ? ` · final ${counts[0]}–${counts[1]} ${fam}` : '';
+      for (const p of m?.players || []) {
+        notify(p.userId, {
+          type: 'match',
+          title: 'Match finished',
+          body: `${winner} wins the match${score}`,
+          link: `/match/${matchId}`,
+        });
+      }
     }
 
     const names = [next.playerNames[0], next.playerNames[1]];
@@ -501,6 +518,26 @@ export function createApi({ broadcast }) {
     res.json({ matches: summarizeList(list) });
   });
 
+  api.get('/notifications', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+    res.json({
+      items: listNotifications(req.user.id, { limit }),
+      unread: unreadNotifications(req.user.id),
+    });
+  });
+
+  api.get('/notifications/unread', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    res.json({ unread: unreadNotifications(req.user.id) });
+  });
+
+  api.post('/notifications/read', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    markNotificationsRead(req.user.id);
+    res.json({ ok: true });
+  });
+
   api.get('/users/:id', (req, res) => {
     const u = getUserById(Number(req.params.id));
     if (!u) return res.status(404).json({ error: 'User not found' });
@@ -521,6 +558,12 @@ export function createApi({ broadcast }) {
     const target = Number(req.params.id);
     if (target === req.user.id) return res.status(400).json({ error: 'You cannot follow yourself' });
     followUser(req.user.id, target);
+    notify(target, {
+      type: 'follow',
+      title: 'New follower',
+      body: `${req.user.name} started following you`,
+      link: `/player/${req.user.id}`,
+    });
     res.json({ ok: true, followers: countFollowers(target) });
   });
 
@@ -650,6 +693,17 @@ export function createApi({ broadcast }) {
     sideB.forEach((u, i) => addMatchPlayer(id, u.id, 1, i));
     addScorer(id, req.user.id); // the creator starts as the scorer
     addEvent(id, `${SPORTS[sport].name} match created`, req.user.id);
+
+    // Tell everyone else on the card they've been booked in.
+    const invited = [...sideA, ...sideB].filter((u) => u.id !== req.user.id);
+    for (const u of invited) {
+      notify(u.id, {
+        type: 'match',
+        title: 'You’re in a match',
+        body: `${nameFor(sideA)} vs ${nameFor(sideB)} · ${SPORTS[sport].name}`,
+        link: `/match/${id}`,
+      });
+    }
     if (preMatch.tossWinner != null) {
       const first = preMatch.serverFirst === 0 ? sideA : sideB;
       addEvent(id, `🪙 Toss — ${nameFor(first)} will serve first`, req.user.id);
@@ -902,6 +956,15 @@ export function createApi({ broadcast }) {
     }
     buildBracket(t.id);
     setTournamentStatus(t.id, 'live');
+    const entrants = getTournamentPlayers(t.id).filter((p) => p.userId !== req.user.id);
+    for (const p of entrants) {
+      notify(p.userId, {
+        type: 'tournament',
+        title: 'Tournament is live',
+        body: `${t.name} · the draw is out — your bracket is waiting`,
+        link: `/tournaments/${t.id}`,
+      });
+    }
     res.json({ tournament: summarizeTournament(getTournamentById(t.id), req.user) });
   });
 

@@ -143,6 +143,19 @@ db.exec(`
     user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
     expires_at INTEGER NOT NULL
   );
+
+  -- In-app notifications (bell).
+  CREATE TABLE IF NOT EXISTS notification (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    type       TEXT NOT NULL DEFAULT 'general',
+    title      TEXT NOT NULL,
+    body       TEXT NOT NULL,
+    link       TEXT,
+    read       INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_notif_user ON notification(user_id, read, id DESC);
 `);
 
 // Databases created before 'reset' OTPs existed had a CHECK on email_code.purpose
@@ -860,6 +873,30 @@ export function followingIds(userId) {
     .prepare(`SELECT followee_id FROM follow WHERE follower_id = ?`)
     .all(userId)
     .map((r) => r.followee_id);
+}
+
+export function notify(userId, { type = 'general', title, body, link = null } = {}) {
+  if (userId == null) return;
+  db.prepare(
+    `INSERT INTO notification (user_id, type, title, body, link, read, created_at)
+     VALUES (?,?,?,?,?,0,?)`
+  ).run(userId, type, String(title || '').slice(0, 200), String(body || '').slice(0, 500), link, new Date().toISOString());
+}
+
+export function listNotifications(userId, { limit = 50 } = {}) {
+  return db
+    .prepare(`SELECT id, type, title, body, link, read, created_at
+              FROM notification WHERE user_id = ? ORDER BY id DESC LIMIT ?`)
+    .all(userId, limit)
+    .map((n) => ({ ...n, read: !!n.read }));
+}
+
+export function unreadNotifications(userId) {
+  return db.prepare(`SELECT COUNT(*) AS n FROM notification WHERE user_id = ? AND read = 0`).get(userId).n;
+}
+
+export function markNotificationsRead(userId) {
+  db.prepare(`UPDATE notification SET read = 1 WHERE user_id = ? AND read = 0`).run(userId);
 }
 
 // ---------------- Events feed (notification-style) ---------------------------
