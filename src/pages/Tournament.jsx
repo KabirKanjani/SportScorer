@@ -195,8 +195,8 @@ export default function Tournament() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [t]
   );
-  const teamLabel = (uid) => t.players.find((p) => p.id === uid)?.name ?? '—';
-  const minTeams = t.format === 'groupPlayoffs' ? 4 : 2;
+  const teamLabel = (uid) => (t ? t.players.find((p) => p.id === uid)?.name ?? '—' : '—');
+  const minTeams = t?.format === 'groupPlayoffs' ? 4 : 2;
 
   if (!t) {
     return (
