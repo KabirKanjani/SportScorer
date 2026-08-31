@@ -100,11 +100,21 @@ db.exec(`
     sport          TEXT NOT NULL,
     visibility     TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','private')),
     status         TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','live','finished')),
+    format         TEXT NOT NULL DEFAULT 'singleElim' CHECK (format IN ('singleElim','groupPlayoffs')),
     creator_id     INTEGER NOT NULL REFERENCES user(id),
     winner_user_id INTEGER REFERENCES user(id),
     created_at     TEXT NOT NULL,
     started_at     TEXT,
     finished_at    TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS tournament_group (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    tournament_id INTEGER NOT NULL REFERENCES tournament(id) ON DELETE CASCADE,
+    label         TEXT NOT NULL,
+    position      INTEGER NOT NULL,
+    created_at    TEXT NOT NULL,
+    UNIQUE (tournament_id, position)
   );
 
   CREATE TABLE IF NOT EXISTS tournament_player (
@@ -113,6 +123,7 @@ db.exec(`
     seed          INTEGER,
     entered_at    TEXT NOT NULL,
     partner_id    INTEGER REFERENCES user(id),
+    group_id      INTEGER REFERENCES tournament_group(id),
     PRIMARY KEY (tournament_id, user_id)
   );
 
@@ -126,6 +137,10 @@ db.exec(`
     winner_id     INTEGER REFERENCES user(id),
     match_id      TEXT,
     status        TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled','live','done')),
+    phase         TEXT NOT NULL DEFAULT 'playoffs' CHECK (phase IN ('group','playoffs')),
+    group_id      INTEGER REFERENCES tournament_group(id),
+    points_a      INTEGER,
+    points_b      INTEGER,
     created_at    TEXT NOT NULL,
     UNIQUE (tournament_id, round, position)
   );
@@ -206,6 +221,42 @@ db.exec(`
   const tcols = db.prepare('PRAGMA table_info(tournament_player)').all();
   if (!tcols.some((c) => c.name === 'partner_id')) {
     db.exec('ALTER TABLE tournament_player ADD COLUMN partner_id INTEGER REFERENCES user(id)');
+  }
+}
+
+// Migrations for grouped (group stage -> playoffs) tournaments.
+{
+  const tro = db.prepare('PRAGMA table_info(tournament)').all();
+  if (!tro.some((c) => c.name === 'format')) {
+    db.exec("ALTER TABLE tournament ADD COLUMN format TEXT NOT NULL DEFAULT 'singleElim'");
+  }
+
+  db.exec(`CREATE TABLE IF NOT EXISTS tournament_group (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    tournament_id INTEGER NOT NULL REFERENCES tournament(id) ON DELETE CASCADE,
+    label         TEXT NOT NULL,
+    position      INTEGER NOT NULL,
+    created_at    TEXT NOT NULL,
+    UNIQUE (tournament_id, position)
+  );`);
+
+  const tpcols = db.prepare('PRAGMA table_info(tournament_player)').all();
+  if (!tpcols.some((c) => c.name === 'group_id')) {
+    db.exec('ALTER TABLE tournament_player ADD COLUMN group_id INTEGER REFERENCES tournament_group(id)');
+  }
+
+  const fxc = db.prepare('PRAGMA table_info(fixture)').all();
+  if (!fxc.some((c) => c.name === 'phase')) {
+    db.exec("ALTER TABLE fixture ADD COLUMN phase TEXT NOT NULL DEFAULT 'playoffs'");
+  }
+  if (!fxc.some((c) => c.name === 'group_id')) {
+    db.exec('ALTER TABLE fixture ADD COLUMN group_id INTEGER REFERENCES tournament_group(id)');
+  }
+  if (!fxc.some((c) => c.name === 'points_a')) {
+    db.exec('ALTER TABLE fixture ADD COLUMN points_a INTEGER');
+  }
+  if (!fxc.some((c) => c.name === 'points_b')) {
+    db.exec('ALTER TABLE fixture ADD COLUMN points_b INTEGER');
   }
 }
 
@@ -918,15 +969,37 @@ export function recentEvents(limit = 30) {
 
 // ---------------- Tournaments -------------------------------------------------
 
-export function createTournament({ name, sport, visibility, creatorId }) {
+export function createTournament({ name, sport, visibility, creatorId, format = 'singleElim' }) {
   const now = new Date().toISOString();
   const info = db
     .prepare(
-      `INSERT INTO tournament (name, sport, visibility, status, creator_id, created_at)
-       VALUES (?, ?, ?, 'draft', ?, ?)`
+      `INSERT INTO tournament (name, sport, visibility, status, format, creator_id, created_at)
+       VALUES (?, ?, ?, 'draft', ?, ?, ?)`
     )
-    .run(name, sport, visibility || 'public', creatorId, now);
+    .run(name, sport, visibility || 'public', format, creatorId, now);
   return getTournamentById(info.lastInsertRowid);
+}
+
+export function createTournamentGroup(tournamentId, label, position) {
+  const info = db
+    .prepare(
+      `INSERT INTO tournament_group (tournament_id, label, position, created_at)
+       VALUES (?, ?, ?, ?)`
+    )
+    .run(tournamentId, label, position, new Date().toISOString());
+  return info.lastInsertRowid;
+}
+
+export function getTournamentGroups(tournamentId) {
+  return db
+    .prepare(`SELECT * FROM tournament_group WHERE tournament_id = ? ORDER BY position`)
+    .all(tournamentId);
+}
+
+export function setTournamentPlayerGroup(tournamentId, userId, groupId) {
+  db.prepare(
+    `UPDATE tournament_player SET group_id = ? WHERE tournament_id = ? AND user_id = ?`
+  ).run(groupId, tournamentId, userId);
 }
 
 export function getTournamentById(id) {
@@ -970,7 +1043,8 @@ export function getTournamentPlayers(tournamentId) {
   return db
     .prepare(
       `SELECT tp.user_id AS userId, tp.seed AS seed, u.name AS name, u.username AS username, u.avatar AS avatar, u.email_verified AS emailVerified,
-              tp.partner_id AS partnerId, pu.name AS partnerName, pu.username AS partnerUsername, pu.avatar AS partnerAvatar
+              tp.partner_id AS partnerId, pu.name AS partnerName, pu.username AS partnerUsername, pu.avatar AS partnerAvatar,
+              tp.group_id AS groupId
        FROM tournament_player tp JOIN user u ON u.id = tp.user_id
        LEFT JOIN user pu ON pu.id = tp.partner_id
        WHERE tp.tournament_id = ?
@@ -1096,11 +1170,11 @@ export function setTournamentWinner(id, userId, status = 'finished') {
   ).run(status, userId, now, id);
 }
 
-export function createFixture({ tournamentId, round, position, player1Id = null, player2Id = null }) {
+export function createFixture({ tournamentId, round, position, player1Id = null, player2Id = null, phase = 'playoffs', groupId = null }) {
   const info = db
     .prepare(
-      `INSERT INTO fixture (tournament_id, round, position, player1_id, player2_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO fixture (tournament_id, round, position, player1_id, player2_id, phase, group_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       tournamentId,
@@ -1108,6 +1182,8 @@ export function createFixture({ tournamentId, round, position, player1Id = null,
       position,
       player1Id,
       player2Id,
+      phase,
+      groupId,
       new Date().toISOString()
     );
   return getFixtureById(info.lastInsertRowid);
@@ -1117,10 +1193,12 @@ export function getFixtureById(id) {
   return db.prepare(`SELECT * FROM fixture WHERE id = ?`).get(id);
 }
 
-export function getFixtures(tournamentId) {
+export function getFixtures(tournamentId, phase = 'playoffs') {
   const rows = db
-    .prepare(`SELECT * FROM fixture WHERE tournament_id = ? ORDER BY round, position`)
-    .all(tournamentId);
+    .prepare(
+      `SELECT * FROM fixture WHERE tournament_id = ? AND phase = ? ORDER BY round, position`
+    )
+    .all(tournamentId, phase);
   const PARTNER = (pid) =>
     db.prepare(`SELECT partner_id AS pid FROM tournament_player WHERE tournament_id = ? AND user_id = ?`).get(tournamentId, pid);
   const team = (pid) => {
@@ -1146,6 +1224,24 @@ export function getFixtures(tournamentId) {
 
 export function getFixtureByMatch(matchId) {
   return db.prepare(`SELECT * FROM fixture WHERE match_id = ?`).get(matchId);
+}
+
+export function getGroupFixtures(tournamentId) {
+  return getFixtures(tournamentId, 'group');
+}
+
+export function setFixtureGroupPoints(fixtureId, pointsA, pointsB, winnerId = null) {
+  if (winnerId) {
+    db.prepare(
+      `UPDATE fixture SET points_a = ?, points_b = ?, winner_id = ?, status = 'done' WHERE id = ?`
+    ).run(pointsA, pointsB, winnerId, fixtureId);
+  } else {
+    db.prepare(`UPDATE fixture SET points_a = ?, points_b = ? WHERE id = ?`).run(
+      pointsA,
+      pointsB,
+      fixtureId
+    );
+  }
 }
 
 export function setFixtureMatch(fixtureId, matchId) {

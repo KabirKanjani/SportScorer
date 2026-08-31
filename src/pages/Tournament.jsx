@@ -195,6 +195,8 @@ export default function Tournament() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [t]
   );
+  const teamLabel = (uid) => t.players.find((p) => p.id === uid)?.name ?? '—';
+  const minTeams = t.format === 'groupPlayoffs' ? 4 : 2;
 
   if (!t) {
     return (
@@ -218,7 +220,7 @@ export default function Tournament() {
             {t.visibility === 'private' && <span className="credit-muted">🔒 private</span>}
           </h1>
           <p className="muted">
-            {t.sportName} · hosted by{' '}
+            {t.sportName} · {t.format === 'groupPlayoffs' ? 'Groups + playoffs' : 'Knockout bracket'} · hosted by{' '}
             <Link to={`/player/${t.creator.id}`} className="event-actor">
               {t.creator.name}
             </Link>
@@ -373,11 +375,14 @@ export default function Tournament() {
             <button
               className="btn primary big"
               onClick={start}
-              disabled={teams.length < 2}
+              disabled={teams.length < minTeams}
             >
-              🎲 Make the bracket
+              {t.format === 'groupPlayoffs' ? '🎲 Draw groups &amp; start' : '🎲 Make the bracket'}
             </button>
-            <p className="muted small">Needs at least 2 {isDoubles ? 'teams' : 'players'}.</p>
+            <p className="muted small">
+              Needs at least {minTeams} {isDoubles ? 'teams' : 'players'}
+              {t.format === 'groupPlayoffs' ? ' (groups of 3–4, top 2 advance).' : '.'}
+            </p>
           </div>
         )}
         {canJoin && (
@@ -389,6 +394,67 @@ export default function Tournament() {
           </div>
         )}
       </div>
+
+      {t.format === 'groupPlayoffs' && t.groups && (
+        <div className="panel group-panel">
+          <div className="panel-title">Group stage · {t.groups.length} groups</div>
+          {t.groups.map((g) => (
+            <div className="group-block" key={g.id}>
+              <div className="group-hd">Group {g.label}</div>
+              <table className="standings">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Team</th>
+                    <th>P</th>
+                    <th>W</th>
+                    <th>L</th>
+                    <th>+/−</th>
+                    <th>Pts</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {g.standings.map((s) => (
+                    <tr key={s.team.userId} className={s.rank <= 2 ? 'advance' : ''}>
+                      <td>{s.rank}</td>
+                      <td>
+                        <Link to={`/player/${s.team.userId}`} className="stand-name">
+                          {teamLabel(s.team.userId)}
+                        </Link>
+                        {s.rank <= 2 && g.standings.length > 2 && <span className="adv-tag">adv</span>}
+                      </td>
+                      <td>{s.played}</td>
+                      <td>{s.wins}</td>
+                      <td>{s.losses}</td>
+                      <td>{s.diff > 0 ? `+${s.diff}` : s.diff}</td>
+                      <td>{s.pointsFor}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="group-fixtures">
+                {g.fixtures.map((f) => (
+                  <GroupFixtureRow
+                    key={f.id}
+                    f={f}
+                    teamLabel={teamLabel}
+                    myRole={t.myRole}
+                    live={t.status === 'live'}
+                    onStart={startFixture}
+                    onOpen={openFixture}
+                    onWalkover={walkover}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+          {t.phase === 'group' && (
+            <p className="muted small">
+              Playoffs start automatically once every group match is decided.
+            </p>
+          )}
+        </div>
+      )}
 
       {t.status !== 'draft' && t.rounds.length > 0 && (
         <div className="panel bracket-panel">
@@ -406,6 +472,53 @@ export default function Tournament() {
             <div className="winner-banner">👑 {t.champion.name} is the champion!</div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function GroupFixtureRow({ f, teamLabel, myRole, live, onStart, onOpen, onWalkover }) {
+  const playable = f.status === 'scheduled' && f.player1 && f.player2;
+  const inMatch = f.status === 'live' && f.matchId;
+  const ended = f.status === 'done' && f.winner;
+  const canAct = myRole === 'creator' || myRole === 'player';
+  const winOf = (p) => ended && p && f.winner.id === p.id;
+  return (
+    <div className={`gfixture ${f.status}`}>
+      <span className="gf-match">
+        <b className={winOf(f.player1) ? 'gf-win' : ''}>{f.player1 ? teamLabel(f.player1.id) : '—'}</b>
+        <span className="gf-vs">vs</span>
+        <b className={winOf(f.player2) ? 'gf-win' : ''}>{f.player2 ? teamLabel(f.player2.id) : '—'}</b>
+      </span>
+      {ended && (
+        <span className="gf-score">
+          {f.points_a}–{f.points_b} · {teamLabel(f.winner.id)} won
+        </span>
+      )}
+      {inMatch && (
+        <button className="btn small" onClick={() => onOpen(f.matchId)}>
+          Open match →
+        </button>
+      )}
+      {playable && canAct && (
+        <button className="btn small" onClick={() => onStart(f)}>
+          Start ▶
+        </button>
+      )}
+      {playable && myRole === 'creator' && live && (
+        <span className="gwo">
+          {[f.player1, f.player2].filter(Boolean).map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="fx-wo-btn"
+              title="Award a walkover — the other team forfeits"
+              onClick={() => onWalkover(f, p.id)}
+            >
+              WO {String(p.name).split(' ')[0]} →
+            </button>
+          ))}
+        </span>
       )}
     </div>
   );

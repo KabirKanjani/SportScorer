@@ -7,6 +7,7 @@ export default function NewTournament() {
   const nav = useNavigate();
   const [name, setName] = useState('');
   const [sport, setSport] = useState('tennis');
+  const [format, setFormat] = useState('singleElim');
   const [visibility, setVisibility] = useState('public');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -17,7 +18,7 @@ export default function NewTournament() {
     try {
       const d = await api('/api/tournaments', {
         method: 'POST',
-        body: { name, sport, visibility },
+        body: { name, sport, visibility, format },
       });
       nav(`/tournaments/${d.tournament.id}`);
     } catch (e) {
@@ -61,6 +62,32 @@ export default function NewTournament() {
           ))}
         </div>
         <p className="sport-desc">{SPORTS[sport].description}</p>
+      </div>
+
+      <div className="panel">
+        <div className="panel-title">Format</div>
+        <div className="sides-grid">
+          <button
+            type="button"
+            className={`sport-option ${format === 'singleElim' ? 'active' : ''}`}
+            onClick={() => setFormat('singleElim')}
+          >
+            <span>🏆 Knockout</span>
+            <span className="sport-desc small-block">
+              Single-elimination bracket — byes handled for you.
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`sport-option ${format === 'groupPlayoffs' ? 'active' : ''}`}
+            onClick={() => setFormat('groupPlayoffs')}
+          >
+            <span>🔁 Groups + playoffs</span>
+            <span className="sport-desc small-block">
+              Round-robin groups (2–4 teams each); top 2 advance to the knockout round.
+            </span>
+          </button>
+        </div>
       </div>
 
       <div className="panel">

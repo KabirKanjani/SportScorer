@@ -48,6 +48,7 @@ import {
   getFixtures,
   getFixtureById,
   getFixtureByMatch,
+  getGroupFixtures,
   setFixtureMatch,
   resolveFixtureWinner,
   setUserPassword,
@@ -63,7 +64,7 @@ import {
 } from './db.mjs';
 import { initialState, apply, getDisplay, stripHistory } from '../src/lib/engine.js';
 import { SPORTS } from '../src/lib/sports.js';
-import { buildBracket, fixtureView, onFixtureMatchFinished, resolveFixtureWalkover } from './tournament.mjs';
+import { buildBracket, startGroupPlayoffs, fixtureView, groupPhaseSummary, onFixtureMatchFinished, resolveFixtureWalkover } from './tournament.mjs';
 import {
   attachUser,
   registerRoute,
@@ -856,6 +857,8 @@ export function createApi({ broadcast }) {
     const isCreator = viewer && isTournamentCreator(t.id, viewer.id);
     const isPlayer = viewer && isTournamentPlayer(t.id, viewer.id);
     const teams = getTournamentSeeds(t.id);
+    const gph =
+      t.format === 'groupPlayoffs' && t.status !== 'draft' ? groupPhaseSummary(t.id) : null;
     return {
       id: t.id,
       name: t.name,
@@ -863,6 +866,7 @@ export function createApi({ broadcast }) {
       icon: SPORTS[t.sport]?.icon || '🏆',
       sportName: SPORTS[t.sport]?.name || t.sport,
       visibility: t.visibility,
+      format: t.format,
       status: t.status,
       createdAt: t.created_at,
       creator: { id: t.creator?.id, name: t.creator?.name, username: t.creator?.username },
@@ -871,12 +875,17 @@ export function createApi({ broadcast }) {
         : null,
       players,
       rounds: view ? view.rounds : [],
+      groups: gph ? gph.groups : null,
+      phase: gph ? gph.phase : view && view.rounds.length > 0 ? 'playoffs' : null,
       champion: (() => {
         const c = view ? view.champion : null;
         if (!c) return null;
         return { id: c.id, name: players.find((p) => p.id === c.id)?.name || c.name };
       })(),
-      canStart: t.status === 'draft' && isCreator && teams.length >= 2,
+      canStart:
+        t.status === 'draft' && isCreator
+          ? teams.length >= (t.format === 'groupPlayoffs' ? 4 : 2)
+          : false,
       canJoin: t.status === 'draft' && viewer && !isPlayer,
       myRole: isCreator ? 'creator' : isPlayer ? 'player' : null,
     };
@@ -894,7 +903,7 @@ export function createApi({ broadcast }) {
 
   api.post('/tournaments', (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Not logged in' });
-    const { name, sport, visibility } = req.body || {};
+    const { name, sport, visibility, format } = req.body || {};
     const nm = String(name || '').trim();
     if (!nm || nm.length > 80) return res.status(400).json({ error: 'Give the tournament a short name' });
     if (!SPORTS[sport]) return res.status(400).json({ error: 'Unknown sport' });
@@ -902,6 +911,7 @@ export function createApi({ broadcast }) {
       name: nm,
       sport,
       visibility: visibility === 'private' ? 'private' : 'public',
+      format: format === 'groupPlayoffs' ? 'groupPlayoffs' : 'singleElim',
       creatorId: req.user.id,
     });
     addTournamentPlayer(t.id, req.user.id); // the creator is player #1
@@ -1008,11 +1018,22 @@ export function createApi({ broadcast }) {
     if (t.status !== 'draft') {
       return res.status(400).json({ error: 'The tournament already started' });
     }
-    const count = getTournamentPlayers(t.id).length;
-    if (count < 2) {
+    const teams = getTournamentSeeds(t.id);
+    if (teams.length < 2) {
       return res.status(400).json({ error: 'Need at least 2 players' });
     }
-    buildBracket(t.id);
+    if (t.format === 'groupPlayoffs') {
+      if (teams.length < 4) {
+        return res.status(400).json({ error: 'Group play needs at least 4 teams' });
+      }
+      try {
+        startGroupPlayoffs(t.id);
+      } catch (e) {
+        return res.status(400).json({ error: e.message });
+      }
+    } else {
+      buildBracket(t.id);
+    }
     setTournamentStatus(t.id, 'live');
     const entrants = getTournamentPlayers(t.id).filter((p) => p.userId !== req.user.id);
     for (const p of entrants) {
@@ -1043,10 +1064,13 @@ export function createApi({ broadcast }) {
     if (!isTournamentCreator(t.id, req.user.id) && !isTournamentPlayer(t.id, req.user.id)) {
       return res.status(403).json({ error: 'You are not in this tournament' });
     }
-    const view = fixtureView(t.id, getFixtures(t.id));
-    const node = view.rounds
-      .flatMap((r) => r.fixtures)
-      .find((f) => f.id === fx.id);
+    let node = null;
+    if (fx.phase === 'group') {
+      node = getGroupFixtures(t.id).find((f) => f.id === fx.id) || null;
+    } else {
+      const view = fixtureView(t.id, getFixtures(t.id));
+      node = view.rounds.flatMap((r) => r.fixtures).find((f) => f.id === fx.id) || null;
+    }
     if (!node || !node.player1 || !node.player2) {
       return res.status(400).json({ error: 'This fixture needs two players (no bye here)' });
     }
