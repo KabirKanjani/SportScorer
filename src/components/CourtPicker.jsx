@@ -8,7 +8,7 @@ import { SPORTS } from '../lib/sports.js';
 
 // surface label -> recognizable color/texture for the thumbnail fill.
 const SURFACE_FILL = {
-  'Hard court': '#c2543b',
+  'Hard court': '#127cae',
   'Clay court': '#c97c52',
   'Grass court': '#4c8a3d',
   'Carpet court': '#3f6ea8',
