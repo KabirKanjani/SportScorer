@@ -3,8 +3,12 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { SPORTS } from '../lib/sports.js';
 import { api } from '../api.js';
 import Avatar from '../components/Avatar.jsx';
+import { SportIcon, SPORT_COLORS } from '../components/SportIcon.jsx';
 
-const TABS = [{ key: null, label: 'All sports', icon: '🎽' }, ...Object.entries(SPORTS).map(([k, s]) => ({ key: k, label: s.name, icon: s.icon }))];
+const TABS = [
+  { key: null, label: 'All sports', color: '#2563eb' },
+  ...Object.entries(SPORTS).map(([k, s]) => ({ key: k, label: s.name, color: SPORT_COLORS[k] })),
+];
 
 function streakText(streak) {
   if (!streak) return '—';
@@ -54,12 +58,12 @@ export default function Leaderboard() {
             key={t.key || 'all'}
             className={`seg-btn ${active.key === t.key ? 'active' : ''}`}
             onClick={() => setParams(t.key ? { sport: t.key } : {})}
+            style={t.key ? { '--tab-c': t.color } : undefined}
           >
-            {t.icon} {t.label}
+            {t.key ? <SportIcon id={t.key} size={15} /> : <span className="tab-all">🎽</span>} {t.label}
           </button>
         ))}
       </div>
-
       {loading && (
         <div className="waiting">
           <div className="spinner" />

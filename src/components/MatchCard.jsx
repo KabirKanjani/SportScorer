@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { SportIcon, SPORT_COLORS } from './SportIcon.jsx';
 
 // Score-formatting per sport for the compact card tiles.
 function ScoreText({ s }) {
@@ -34,11 +35,13 @@ function ScoreText({ s }) {
 
 export default function MatchCard({ m }) {
   const live = m.status === 'live';
+  const accent = SPORT_COLORS[m.sport] || '#2563eb';
   return (
-    <Link to={`/match/${m.id}`} className={`match-card ${live ? 'live' : 'finished'}`}>
+    <Link to={`/match/${m.id}`} className={`match-card ${live ? 'live' : 'finished'}`} style={{ '--sport': accent }}>
+      <span className="match-sport-stripe" style={{ background: accent }} />
       <div className="card-top">
-        <span className="sport-chip small">
-          {m.icon} {m.sportName}
+        <span className="sport-chip small" style={{ color: accent, borderColor: `${accent}44`, background: `${accent}14` }}>
+          <SportIcon id={m.sport} size={15} /> {m.sportName}
         </span>
         {live ? <span className="live-pill">● LIVE</span> : <span className="done-pill">Done</span>}
       </div>

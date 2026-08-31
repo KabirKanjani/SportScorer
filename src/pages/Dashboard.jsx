@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Activity, CheckCircle2, XCircle, TrendingUp, ShieldCheck } from 'lucide-react';
 import { api } from '../api.js';
 import MatchCard from '../components/MatchCard.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -38,7 +39,7 @@ export default function Dashboard() {
 
       {!user.emailVerified && (
         <div className="verify-banner">
-          <span>🔎 Your email isn't verified yet — verify it to secure your account.</span>
+          <span><ShieldCheck size={16} /> Your email isn't verified yet — verify it to secure your account.</span>
           <Link to={`/verify-email?email=${encodeURIComponent(user.email)}`} className="btn small">
             Verify now
           </Link>
@@ -76,18 +77,22 @@ export default function Dashboard() {
           {stats && (
             <section className="stats-strip">
               <div className="stat-box">
+                <span className="stat-icon" style={{ background: '#2563eb22', color: '#2563eb' }}><Activity size={18} /></span>
                 <b>{stats.total.played}</b>
                 <span>Matches</span>
               </div>
               <div className="stat-box">
+                <span className="stat-icon" style={{ background: '#16a34a22', color: '#16a34a' }}><CheckCircle2 size={18} /></span>
                 <b className="win">{stats.total.wins}</b>
                 <span>Wins</span>
               </div>
               <div className="stat-box">
+                <span className="stat-icon" style={{ background: '#e11d4822', color: '#e11d48' }}><XCircle size={18} /></span>
                 <b className="loss">{stats.total.losses}</b>
                 <span>Losses</span>
               </div>
               <div className="stat-box">
+                <span className="stat-icon" style={{ background: '#d9770622', color: '#d97706' }}><TrendingUp size={18} /></span>
                 <b>{stats.total.winPct}%</b>
                 <span>Win rate</span>
               </div>

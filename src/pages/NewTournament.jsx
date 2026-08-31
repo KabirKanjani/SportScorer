@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { SPORTS, SPORT_IDS } from '../lib/sports.js';
+import { SportIcon } from '../components/SportIcon.jsx';
 
 export default function NewTournament() {
   const nav = useNavigate();
@@ -56,7 +57,7 @@ export default function NewTournament() {
               className={`sport-option ${sport === id ? 'active' : ''}`}
               onClick={() => setSport(id)}
             >
-              <span className="sport-icon">{SPORTS[id].icon}</span>
+              <span className="sport-icon"><SportIcon id={id} size={26} /></span>
               <span className="sport-name">{SPORTS[id].name}</span>
             </button>
           ))}

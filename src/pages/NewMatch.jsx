@@ -4,6 +4,8 @@ import { SPORTS, SPORT_IDS } from '../lib/sports.js';
 import { api } from '../api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import Avatar from '../components/Avatar.jsx';
+import CourtPicker from '../components/CourtPicker.jsx';
+import { SportIcon } from '../components/SportIcon.jsx';
 
 // A picker that searches registered users by name.
 function PlayerPicker({ label, value, onChange }) {
@@ -158,7 +160,7 @@ const [venue, setVenue] = useState('');
                 className={`sport-option ${sport === id ? 'active' : ''}`}
                 onClick={() => changeSport(id)}
               >
-                <span className="sport-icon">{s.icon}</span>
+                <span className="sport-icon"><SportIcon id={id} size={26} /></span>
                 <span className="sport-name">{s.name}</span>
               </button>
             );
@@ -200,12 +202,7 @@ const [venue, setVenue] = useState('');
         </div>
         <div className="field">
           <label>Court / surface</label>
-          <select value={court || ''} onChange={(e) => setCourt(e.target.value || null)}>
-            <option value="">Default ({SPORTS[sport].court.surface})</option>
-            {(SPORTS[sport].courtOptions || []).map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          <CourtPicker sport={sport} value={court} onChange={setCourt} />
         </div>
         <div className="field">
           <label>Conditions</label>
