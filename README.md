@@ -76,6 +76,20 @@ verification code **on screen** and never calls Resend — handy while developin
 even if you already set a real key. Remove it (or set `NODE_ENV=production`) to
 force real emails.
 
+## Seeding demo data
+
+So a fresh deployment doesn't look empty, sample players and demo matches can be
+seeded on demand (kept OFF by default):
+
+```bash
+node server/seed.mjs         # sample player accounts only (28 top players, per sport)
+node server/seed.mjs --demo   # + 8 finished + 1 live demo match, valid engine states
+```
+
+Setting `SEED_DEMO=1` in the environment does the same. The demo matches play out
+through the real scoring engine, so every seeded match page, the live feed and the
+leaderboard render completely. Ideal for testing the landing page on a clean DB.
+
 ## Google sign-in
 
 1. Create a Google Cloud project → OAuth consent screen (External) →

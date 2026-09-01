@@ -52,6 +52,10 @@ import {
   setFixtureMatch,
   resolveFixtureWinner,
   setUserPassword,
+  deleteUser,
+  updateUserProfile,
+  changeUserPassword,
+  deleteAllSessions,
   notify,
   listNotifications,
   unreadNotifications,
@@ -73,6 +77,7 @@ import {
   meRoute,
   startSession,
   hashPassword,
+  verifyPassword,
 } from './auth.mjs';
 import {
   issueOtp,
@@ -383,6 +388,72 @@ export function createApi({ broadcast }) {
     }
     clearUserAvatar(u.id);
     res.json({ user: serializeUser(getUserById(req.user.id)) });
+  });
+
+  // Update profile fields (name and/or username). Username must be free and valid.
+  api.patch('/me/profile', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const { name, username } = req.body || {};
+    const wantName = name != null ? String(name).trim() : null;
+    const wantUsername = username != null ? String(username).trim() : null;
+    if (wantName != null && wantName.length < 2) {
+      return res.status(400).json({ error: 'Name must be at least 2 characters' });
+    }
+    if (wantUsername != null) {
+      const uname = wantUsername.replace(/^@+/, '').trim().toLowerCase();
+      if (!/^[a-z0-9_]{3,20}$/.test(uname)) {
+        return res.status(400).json({
+          error: 'Username must be 3–20 letters, numbers or underscores (e.g. alex_07).',
+        });
+      }
+      const taken = getUserByUsername(uname);
+      if (taken && taken.id !== req.user.id) {
+        return res.status(409).json({ error: 'That username is already taken' });
+      }
+    }
+    const updated = updateUserProfile(req.user.id, {
+      name: wantName,
+      username: wantUsername,
+    });
+    res.json({ user: serializeUser(updated) });
+  });
+
+  // Change password (requires the current password when one is set).
+  api.post('/me/password', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const u = getUserById(req.user.id);
+    if (!u) return res.status(401).json({ error: 'Not logged in' });
+    const { currentPassword, newPassword } = req.body || {};
+    if (!newPassword || String(newPassword).length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+    if (u.password_hash) {
+      if (!currentPassword || !verifyPassword(String(currentPassword), u.password_hash)) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+    } else {
+      // No password yet (e.g. signed up with Google): set one directly.
+      return res.status(400).json({
+        error: 'No password on this account — sign in and set one via password reset, or use your social login.',
+      });
+    }
+    // Invalidate other sessions (the current one is re-issued below), then set the new hash.
+    deleteAllSessions(u.id);
+    changeUserPassword(u.id, hashPassword(String(newPassword)));
+    startSession(req, res, serializeUser(getUserById(u.id)));
+    res.json({ ok: true, message: 'Password updated. Other sessions were signed out.' });
+  });
+
+  // Delete the account (anonymizes shared history; erases all personal data).
+  api.delete('/me', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+    const { confirm } = req.body || {};
+    if (confirm !== 'DELETE') {
+      return res.status(400).json({ error: 'Send confirmation "DELETE" to remove your account' });
+    }
+    deleteUser(req.user.id);
+    res.clearCookie('ss_sess', { path: '/' });
+    res.json({ ok: true });
   });
 
   // Email OTP: send a code, then verify it (verify account or passwordless login)

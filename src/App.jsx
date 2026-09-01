@@ -19,9 +19,11 @@ import NewTournament from './pages/NewTournament.jsx';
 import Tournament from './pages/Tournament.jsx';
 import Search from './pages/Search.jsx';
 import Legal from './pages/Legal.jsx';
+import NotFound from './pages/NotFound.jsx';
 import Kiosk from './pages/Kiosk.jsx';
 import Leaderboard from './pages/Leaderboard.jsx';
 import Notifications from './pages/Notifications.jsx';
+import Account from './pages/Account.jsx';
 
 function CrashFallback({ resetError }) {
   return (
@@ -91,9 +93,10 @@ export default function App() {
           <Route path="/tournaments/:id" element={<Tournament />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/notifications" element={user ? <Notifications /> : <Navigate to="/login" replace />} />
+          <Route path="/settings" element={user ? <Account /> : <Navigate to="/login" replace />} />
           <Route path="/privacy" element={<Legal kind="privacy" />} />
           <Route path="/terms" element={<Legal kind="terms" />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
           </Routes>
         </ErrorBoundary>
       </main>

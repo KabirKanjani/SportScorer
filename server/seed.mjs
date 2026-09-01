@@ -4,6 +4,9 @@
 import { pathToFileURL } from 'node:url';
 import { hashPassword } from './auth.mjs';
 import { createUser, getUserByEmail, setUserAvatar, db } from './db.mjs';
+import { createMatch, addMatchPlayer, addScorer, addEvent, saveMatchState, getUserByUsername } from './db.mjs';
+import { initialState, apply, stripHistory } from '../src/lib/engine.js';
+import { SPORTS } from '../src/lib/sports.js';
 
 const BOT_PASSWORD = 'sample123';
 
@@ -120,4 +123,81 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   console.log('Seeding sample players…');
   const res = seedSampleUsers({ force: true });
   console.log(res);
+  if (process.argv.includes('--demo')) {
+    console.log('Seeding demo matches…');
+    const demo = seedDemoMatches(res.seeded > 0 || res.skipped);
+    console.log(demo);
+  }
+}
+
+// ---- Demo matches ------------------------------------------------------------
+// Optional, deliberate: `--demo` (or SEED_DEMO=1) adds a few finished + one live
+// match between the sample players so the landing/feed/leaderboard look alive on
+// a fresh deploy. Kept OFF by default so production stays clean unless requested.
+
+// Drive a match to a real finished state via the engine, then persist it.
+function playMatch(sport, names, winnerIdx) {
+  let s = initialState(sport, names);
+  // rough determinism: winner takes the point ~70% of the time
+  while (!s.matchOver) {
+    const pick = Math.random() < 0.72 ? winnerIdx : 1 - winnerIdx;
+    s = apply(s, { type: 'point', player: pick });
+  }
+  return stripHistory(s);
+}
+
+export function seedDemoMatches({ force = true } = {}) {
+  const users = SAMPLE_USERS.map((u) => getUserByUsername(u.username)).filter(Boolean);
+  if (users.length < 4) return { seeded: 0, skipped: true, note: 'sample users missing' };
+  const byName = (username) => users.find((u) => u.username === username);
+  const uid = (username) => byName(username)?.id;
+
+  const DEMO = [
+    // finished matches
+    { sport: 'tennis', a: 'alcaraz', b: 'federer', winner: 0 },
+    { sport: 'tennis', a: 'swiatek', b: 'serenaw', winner: 0 },
+    { sport: 'padel', a: 'coello', b: 'tapia', winner: 1 },
+    { sport: 'pickleball', a: 'alw', b: 'parenteau', winner: 0 },
+    { sport: 'tabletennis', a: 'malong', b: 'fanzhendong', winner: 0 },
+    { sport: 'squash', a: 'farag', b: 'elshoragy', winner: 0 },
+    { sport: 'badminton', a: 'axelsen', b: 'momota', winner: 0 },
+    { sport: 'racquetball', a: 'waselenchuk', b: 'carson', winner: 0 },
+    // one live, in-progress tennis match
+    { sport: 'tennis', a: 'arianas', b: 'josemaria', live: true, winner: 0 },
+  ];
+
+  let seeded = 0;
+  for (const g of DEMO) {
+    const aid = uid(g.a), bid = uid(g.b);
+    if (!aid || !bid) continue;
+    const id = `demo_${g.a}_${g.b}`;
+    if (db.prepare('SELECT 1 FROM match WHERE id = ?').get(id)) continue;
+    const names = [byName(g.a).name, byName(g.b).name];
+    let state;
+    if (g.live) {
+      let s = initialState(g.sport, names);
+      for (let i = 0; i < 14; i++) s = apply(s, { type: 'point', player: i % 2 });
+      state = stripHistory(s);
+      // persist as a live, in-progress match
+      createMatch({ id, sport: g.sport, state, createdBy: aid });
+    } else {
+      state = playMatch(g.sport, names, g.winner);
+      createMatch({ id, sport: g.sport, state, createdBy: aid });
+    }
+    addMatchPlayer(id, aid, 0, 0);
+    addMatchPlayer(id, bid, 1, 0);
+    addScorer(id, aid);
+    if (g.live) {
+      addEvent(id, `${SPORTS[g.sport].name} match created`, aid);
+      addEvent(id, 'Match started', aid);
+      saveMatchState(id, state, { finish: false });
+    } else {
+      addEvent(id, `${SPORTS[g.sport].name} match created`, aid);
+      addEvent(id, 'Match started', aid);
+      addEvent(id, 'Match finished', aid);
+      saveMatchState(id, state, { finish: true });
+    }
+    seeded++;
+  }
+  return { seeded };
 }

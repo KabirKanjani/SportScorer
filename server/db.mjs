@@ -590,6 +590,66 @@ export function clearUserAvatar(userId) {
   db.prepare('UPDATE user SET avatar = NULL WHERE id = ?').run(userId);
 }
 
+export function updateUserProfile(userId, { name, username }) {
+  if (name != null) {
+    db.prepare('UPDATE user SET name = ? WHERE id = ?').run(String(name).trim(), userId);
+  }
+  if (username != null) {
+    db.prepare('UPDATE user SET username = ? WHERE id = ?').run(cleanUsername(username), userId);
+  }
+  return getUserById(userId);
+}
+
+// "Delete my account".
+//
+// Matches/tournaments are public records tied to the user by NOT NULL FKs
+// (match.created_by, match_player.user_id, tournament.creator_id) that can't
+// be nulled, so a hard DELETE is only possible for an account that hasn't left
+// any public history behind. For everyone else we erase every piece of PII —
+// name, email, password, username, avatar, sessions, follows, notifications,
+// codes, OAuth links, tournament memberships — and revoke direct references
+// (match_scorer, event actor). The account name renders as "Deleted User" so
+// shared score history stays coherent without exposing personal data.
+export function deleteUser(userId) {
+  const dbp = db.prepare.bind(db);
+  const refs = dbp(`SELECT
+      (SELECT COUNT(*) FROM match WHERE created_by = ?) +
+      (SELECT COUNT(*) FROM match_player WHERE user_id = ?) +
+      (SELECT COUNT(*) FROM tournament WHERE creator_id = ?) +
+      (SELECT COUNT(*) FROM fixture WHERE player1_id = ? OR player2_id = ?)
+      AS n
+    `).get(userId, userId, userId, userId, userId).n;
+
+  // Clean up rows that are purely "owned" by / addressed to this user.
+  dbp(`DELETE FROM session WHERE user_id = ?`).run(userId);
+  dbp(`DELETE FROM follow WHERE follower_id = ? OR followee_id = ?`).run(userId, userId);
+  dbp(`DELETE FROM notification WHERE user_id = ?`).run(userId);
+  dbp(`DELETE FROM reset_token WHERE user_id = ?`).run(userId);
+  dbp(`DELETE FROM oauth_account WHERE user_id = ?`).run(userId);
+  dbp(`DELETE FROM tournament_player WHERE user_id = ?`).run(userId);
+  dbp(`DELETE FROM match_scorer WHERE user_id = ?`).run(userId);
+  dbp(`UPDATE event SET actor_id = NULL WHERE actor_id = ?`).run(userId);
+
+  if (Number(refs) === 0) {
+    dbp(`DELETE FROM user WHERE id = ?`).run(userId);
+    return { hard: true };
+  }
+  const deleted = `${userId}@deleted.invalid`;
+  dbp(`UPDATE user SET
+        name = 'Deleted User',
+        email = ?,
+        password_hash = '',
+        username = NULL,
+        avatar = NULL
+      WHERE id = ?`).run(deleted.replace('@', `_${Date.now()}@`), userId);
+  return { hard: false };
+}
+
+// Change the sign-in password for an account that has one.
+export function changeUserPassword(userId, passwordHash) {
+  db.prepare('UPDATE user SET password_hash = ? WHERE id = ?').run(passwordHash, userId);
+}
+
 // ---------------- Sessions ---------------------------------------------------
 
 export function createSession(userId) {
@@ -604,6 +664,10 @@ export function createSession(userId) {
 
 export function deleteSession(token) {
   db.prepare(`DELETE FROM session WHERE token = ?`).run(token);
+}
+
+export function deleteAllSessions(userId) {
+  db.prepare(`DELETE FROM session WHERE user_id = ?`).run(userId);
 }
 
 export function getUserBySession(token) {

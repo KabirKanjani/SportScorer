@@ -1,5 +1,5 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Radio, Trophy, BarChart3, Search, LayoutDashboard, LogOut, LogIn, UserPlus, PlusCircle } from 'lucide-react';
+import { Radio, Trophy, BarChart3, Search, LayoutDashboard, LogOut, LogIn, UserPlus, PlusCircle, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import Avatar from './Avatar.jsx';
 import NotificationsBell from './NotificationsBell.jsx';
@@ -60,6 +60,9 @@ export default function Navbar() {
               <NavLink to={`/player/${user.id}`} className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
                 <span className="nav-avatar"><Avatar user={user} /></span>
                 {user.name}
+              </NavLink>
+              <NavLink to="/settings" className="nav-link nav-settings" title="Account settings" aria-label="Account settings">
+                <Settings size={15} />
               </NavLink>
             </>
           )}
