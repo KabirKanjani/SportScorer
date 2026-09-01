@@ -19,7 +19,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 
 import { createApi, processMatchAction, matchSummary } from './api.mjs';
 import { getMatch, getEvents, getUserBySession, getUserById, getTournamentById, canScore, listSitemapEntries } from './db.mjs';
-import { seedSampleUsers } from './seed.mjs';
+import { seedSampleUsers, seedUsOpenTennis, seedDemoMatches, seedDemoFollows, seedDemoTournaments } from './seed.mjs';
 import { stripHistory } from '../src/lib/engine.js';
 import { SPORTS } from '../src/lib/sports.js';
 import { sessionTokenFromRequest } from './auth.mjs';
@@ -452,6 +452,14 @@ server.listen(PORT, () => {
     console.warn(`  Backup skipped: ${e.message}`);
   }
   const seeded = seedSampleUsers();
+  if (process.env.SEED_DEMO === '1') {
+    console.log('  Demo seed enabled — syncing sample players, US Open excerpt, live matches, tournaments…');
+    seedSampleUsers({ force: true });
+    seedUsOpenTennis();
+    seedDemoMatches();
+    seedDemoFollows();
+    seedDemoTournaments();
+  }
   console.log(`\n  SportScore running`);
   console.log(`  http://localhost:${PORT}`);
   console.log(`  Opened on any device via http://<your-ip>:${PORT}`);
