@@ -141,13 +141,15 @@ The app is one self-contained Node process, so any Node host works. Examples:
 | ----------------------- | --------------------------- | ----------------------------------------- |
 | `PORT`                  | `4321`                      | HTTP + WebSocket port                     |
 | `DATABASE_PATH`         | `./data/sportscore.db`      | Where the SQLite file lives               |
-| `SESSION_SECRET`        | random at boot              | Cookie signing secret (set in production) |
 | `BASE_URL`              | `http://localhost:4321`     | Public site URL (Google redirect)         |
 | `RESEND_API_KEY`        | (none)                      | Sends OTP emails; unset = dev mode        |
 | `EMAIL_FROM`            | `SportScore <onboarding@resend.dev>` | Verified Resend sender         |
 | `DEV_CODES`             | (off)                       | `1` shows codes on screen instead of sending |
 | `GOOGLE_CLIENT_ID`      | (none)                      | Enables Google sign-in                    |
 | `GOOGLE_CLIENT_SECRET`  | (none)                      | Enables Google sign-in                    |
+| `SEED_DEMO`             | (off)                       | `1` seeds sample players, US Open results + demo data (`node server/seed.mjs --demo`) |
+| `SENTRY_DSN`            | (none)                      | Backend crash/HTTP error reporting (Sentry) |
+| `SENTRY_CLIENT_KEY`     | (none)                      | Public key embedded in the page for client errors |
 
 The server also loads a `.env` file from the project root if one exists
 (real environment variables always win).
