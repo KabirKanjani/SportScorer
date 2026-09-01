@@ -162,6 +162,19 @@ function previewMeta(pathname) {
             ? `${s.sportName} · Final score ${sc}`
             : `${s.sportName} · ${vs} · ${statusWord[m.status] || 'Match'}`,
         url,
+        jsonLd: {
+          '@type': 'SportsEvent',
+          name: `${vs} · ${s.sportName}`,
+          sport: s.sportName,
+          url,
+          eventStatus: (
+            m.status === 'finished'
+              ? 'https://schema.org/EventCompleted'
+              : m.status === 'live'
+                ? 'https://schema.org/EventActive'
+                : 'https://schema.org/EventScheduled'
+          ),
+        },
       };
     }
   }
@@ -175,6 +188,16 @@ function previewMeta(pathname) {
           ? `${u.name} (@${u.username}) — follow their matches on SportScore.`
           : `${u.name} — follow their matches on SportScore.`,
         url,
+        jsonLd: {
+          '@type': 'ProfilePage',
+          url,
+          mainEntity: {
+            '@type': 'Person',
+            name: u.name,
+            ...(u.avatar ? { image: u.avatar } : {}),
+            url: `${SITE}/player/${u.id}`,
+          },
+        },
       };
     }
   }
@@ -187,6 +210,19 @@ function previewMeta(pathname) {
         title: `${t.name} · ${statusWord[t.status] || 'Tournament'} on SportScore`,
         description: `${sport?.name || 'Tournament'} knockout — ${t.visibility === 'private' ? 'private' : 'public'} · SportScore.`,
         url,
+        jsonLd: {
+          '@type': 'SportsEvent',
+          name: t.name,
+          sport: sport?.name || 'Sport',
+          url,
+          eventStatus: (
+            t.status === 'finished'
+              ? 'https://schema.org/EventCompleted'
+              : t.status === 'live'
+                ? 'https://schema.org/EventActive'
+                : 'https://schema.org/EventScheduled'
+          ),
+        },
       };
     }
   }
@@ -200,7 +236,7 @@ function injectPreviewMeta(html, pathname) {
   const esc = (s) =>
     String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   const { title, description, url } = meta;
-  return html
+  let out = html
     .replace(/<title>[\s\S]*?<\/title>/, `<title>${esc(title)}</title>`)
     .replace(/name="description" content="[^"]*"/, `name="description" content="${esc(description)}"`)
     .replace(/property="og:title" content="[^"]*"/, `property="og:title" content="${esc(title)}"`)
@@ -208,6 +244,13 @@ function injectPreviewMeta(html, pathname) {
     .replace(/name="twitter:title" content="[^"]*"/, `name="twitter:title" content="${esc(title)}"`)
     .replace(/name="twitter:description" content="[^"]*"/, `name="twitter:description" content="${esc(description)}"`)
     .replace(/property="og:url" content="[^"]*"/, `property="og:url" content="${esc(url)}"`);
+  if (meta.jsonLd) {
+    out = out.replace(
+      '</head>',
+      `${meta.url ? `<link rel="canonical" href="${esc(url)}" />\n    ` : ''}<script type="application/ld+json">${JSON.stringify(meta.jsonLd)}</script>\n  </head>`
+    );
+  }
+  return out;
 }
 
 // Robots + SEO sitemap. The sitemap is generated per request so it always
