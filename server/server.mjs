@@ -20,6 +20,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createApi, processMatchAction, matchSummary } from './api.mjs';
 import { getMatch, getEvents, getUserBySession, getUserById, getTournamentById, canScore, listSitemapEntries } from './db.mjs';
 import { seedSampleUsers, seedUsOpenTennis, seedDemoMatches, seedDemoFollows, seedDemoTournaments } from './seed.mjs';
+import { startLiveTicker, TICK_MS } from './ticker.mjs';
 import { stripHistory } from '../src/lib/engine.js';
 import { SPORTS } from '../src/lib/sports.js';
 import { sessionTokenFromRequest } from './auth.mjs';
@@ -459,6 +460,8 @@ server.listen(PORT, () => {
     seedDemoMatches();
     seedDemoFollows();
     seedDemoTournaments();
+    const ticker = startLiveTicker({ broadcast });
+    console.log(`  Live demo playout ticker started (${TICK_MS}ms interval)`);
   }
   console.log(`\n  SportScore running`);
   console.log(`  http://localhost:${PORT}`);

@@ -90,6 +90,13 @@ Setting `SEED_DEMO=1` in the environment does the same. The demo matches play ou
 through the real scoring engine, so every seeded match page, the live feed and the
 leaderboard render completely. Ideal for testing the landing page on a clean DB.
 
+With `SEED_DEMO=1` the server also starts a **live demo playout ticker**
+(`server/ticker.mjs`): it advances the live demo/US Open matches point-by-point,
+finishes matches, opens the next group/playoff fixture of any live demo
+tournament, and re-seeds a fresh live match (or next tournament season) whenever
+one ends — so the site always has live matches and a progressing bracket without
+needing a real data feed. Tune the pace with `LIVE_TICK_MS` (default `3000`).
+
 ## Google sign-in
 
 1. Create a Google Cloud project → OAuth consent screen (External) →
@@ -147,7 +154,8 @@ The app is one self-contained Node process, so any Node host works. Examples:
 | `DEV_CODES`             | (off)                       | `1` shows codes on screen instead of sending |
 | `GOOGLE_CLIENT_ID`      | (none)                      | Enables Google sign-in                    |
 | `GOOGLE_CLIENT_SECRET`  | (none)                      | Enables Google sign-in                    |
-| `SEED_DEMO`             | (off)                       | `1` seeds sample players, US Open results + demo data (`node server/seed.mjs --demo`) |
+| `SEED_DEMO`             | (off)                       | `1` seeds sample players, US Open results + demo data; also starts the live demo playout ticker |
+| `LIVE_TICK_MS`          | `3000`                      | Live demo playout ticker interval in ms (advances demo matches/tournaments) |
 | `SENTRY_DSN`            | (none)                      | Backend crash/HTTP error reporting (Sentry) |
 | `SENTRY_CLIENT_KEY`     | (none)                      | Public key embedded in the page for client errors |
 
